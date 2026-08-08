@@ -1,84 +1,92 @@
 import UIKit
 import CoreGraphics
 
-// Dessine l'image affichée dans la fenêtre flottante.
-// Tout est vectoriel : chiffre, barre segmentée, badge de vitesse.
+// Format calqué sur la Dynamic Island compacte de l'iPhone 14 Pro :
+// ~167 x 37 pt, soit un rapport de 4,55:1.
 enum OverlayRenderer {
 
-    static let width = 480
-    static let height = 180
+    static let width = 560
+    static let height = 123
 
-    private static let purple = UIColor(red: 0.72, green: 0.35, blue: 0.98, alpha: 1)
-    private static let purpleDim = UIColor(red: 0.30, green: 0.16, blue: 0.44, alpha: 1)
+    private static let purple     = UIColor(red: 0.74, green: 0.38, blue: 1.00, alpha: 1)
+    private static let purpleDim  = UIColor(red: 0.26, green: 0.14, blue: 0.38, alpha: 1)
 
     static func draw(into ctx: CGContext, elixir: Double, rate: Int, hand: [String]) {
 
         let w = CGFloat(width), h = CGFloat(height)
 
-        // Fond
-        ctx.setFillColor(UIColor(white: 0.04, alpha: 1).cgColor)
+        ctx.setFillColor(UIColor.black.cgColor)
         ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
 
         UIGraphicsPushContext(ctx)
         defer { UIGraphicsPopContext() }
 
-        // ---- Chiffre principal ----
+        let pad: CGFloat = 22
+
+        // ---- Chiffre, aligné à gauche ----
         let value = String(format: "%.1f", elixir)
-        let numFont = UIFont.systemFont(ofSize: 96, weight: .bold)
+        let numFont = UIFont.systemFont(ofSize: 82, weight: .bold)
         let numAttr: [NSAttributedString.Key: Any] = [
             .font: numFont,
             .foregroundColor: UIColor.white
         ]
         let numSize = (value as NSString).size(withAttributes: numAttr)
-        (value as NSString).draw(at: CGPoint(x: 28, y: 18), withAttributes: numAttr)
+        let numY = (h - numSize.height) / 2
+        (value as NSString).draw(at: CGPoint(x: pad, y: numY), withAttributes: numAttr)
 
-        // Goutte à gauche du chiffre
-        drawDrop(ctx: ctx, rect: CGRect(x: 28 + numSize.width + 16, y: 44, width: 34, height: 44))
+        // ---- Goutte ----
+        let dropX = pad + numSize.width + 12
+        let dropH: CGFloat = 40
+        drawDrop(ctx: ctx, rect: CGRect(x: dropX, y: (h - dropH) / 2,
+                                        width: dropH * 0.72, height: dropH))
 
-        // ---- Badge de vitesse ----
+        // ---- Badge de vitesse, coin haut droit ----
+        var barRight = w - pad
         if rate > 1 {
             let badge = "x\(rate)"
-            let bFont = UIFont.systemFont(ofSize: 34, weight: .heavy)
+            let bFont = UIFont.systemFont(ofSize: 30, weight: .heavy)
             let bAttr: [NSAttributedString.Key: Any] = [
                 .font: bFont,
                 .foregroundColor: rate == 3 ? UIColor.systemOrange : UIColor.systemYellow
             ]
             let bSize = (badge as NSString).size(withAttributes: bAttr)
-            (badge as NSString).draw(at: CGPoint(x: w - bSize.width - 28, y: 22),
+            (badge as NSString).draw(at: CGPoint(x: w - pad - bSize.width,
+                                                 y: (h - bSize.height) / 2),
                                      withAttributes: bAttr)
+            barRight = w - pad - bSize.width - 16
         }
 
-        // ---- Barre segmentée en 10 ----
-        let barY = h - 52
-        let barH: CGFloat = 26
-        let margin: CGFloat = 28
-        let gap: CGFloat = 5
-        let segW = (w - margin * 2 - gap * 9) / 10
+        // ---- Barre segmentée, à droite du chiffre ----
+        let barLeft = dropX + dropH * 0.72 + 20
+        let available = max(0, barRight - barLeft)
+        let gap: CGFloat = 4
+        let segW = (available - gap * 9) / 10
+        let barH: CGFloat = 44
+        let barY = (h - barH) / 2
 
-        for i in 0..<10 {
-            let x = margin + CGFloat(i) * (segW + gap)
-            let rect = CGRect(x: x, y: barY, width: segW, height: barH)
-            let path = UIBezierPath(roundedRect: rect, cornerRadius: 5)
+        if segW > 2 {
+            for i in 0..<10 {
+                let x = barLeft + CGFloat(i) * (segW + gap)
+                let rect = CGRect(x: x, y: barY, width: segW, height: barH)
+                let path = UIBezierPath(roundedRect: rect, cornerRadius: 4)
 
-            // Fond du segment
-            ctx.setFillColor(purpleDim.withAlphaComponent(0.45).cgColor)
-            ctx.addPath(path.cgPath)
-            ctx.fillPath()
-
-            // Remplissage partiel
-            let fill = min(1, max(0, elixir - Double(i)))
-            if fill > 0 {
-                ctx.saveGState()
+                ctx.setFillColor(purpleDim.cgColor)
                 ctx.addPath(path.cgPath)
-                ctx.clip()
-                ctx.setFillColor(purple.cgColor)
-                ctx.fill(CGRect(x: x, y: barY, width: segW * CGFloat(fill), height: barH))
-                ctx.restoreGState()
+                ctx.fillPath()
+
+                let fill = min(1, max(0, elixir - Double(i)))
+                if fill > 0 {
+                    ctx.saveGState()
+                    ctx.addPath(path.cgPath)
+                    ctx.clip()
+                    ctx.setFillColor(purple.cgColor)
+                    ctx.fill(CGRect(x: x, y: barY, width: segW * CGFloat(fill), height: barH))
+                    ctx.restoreGState()
+                }
             }
         }
     }
 
-    // Petite goutte d'élixir stylisée
     private static func drawDrop(ctx: CGContext, rect: CGRect) {
         let p = UIBezierPath()
         let midX = rect.midX

@@ -31,8 +31,12 @@ final class ElixirEngine: ObservableObject {
         voice.onCard = { [weak self] card in
             Task { @MainActor in self?.spend(card.cost) }
         }
-        // « sept » → l'élixir adverse est mis à 7 et repart de là
-        voice.onElixir = { [weak self] value in
+        // « trois » → on retire 3 élixirs
+        voice.onSpendAmount = { [weak self] value in
+            Task { @MainActor in self?.spend(value) }
+        }
+        // « début sept » → l'élixir est fixé à 7 et repart de là
+        voice.onSetElixir = { [weak self] value in
             Task { @MainActor in self?.setElixirTo(value) }
         }
     }

@@ -9,7 +9,6 @@ final class ElixirEngine: ObservableObject {
     @Published var running: Bool = false
     @Published var status: String = "Prêt"
 
-    // 1 point d'élixir toutes les 2,8 secondes en vitesse normale
     private let secondsPerElixir: Double = 2.8
 
     private var timer: Timer?
@@ -21,32 +20,68 @@ final class ElixirEngine: ObservableObject {
 
     func start() {
         guard !running else { return }
+        Task { await beginMatch() }
+    }
+
+    func stop() {
+        Task { await endMatch() }
+    }
+
+    private func beginMatch() async {
+        // 1. On ferme TOUTES les activités encore en vie, et on attend vraiment
+        for old in Activity<ElixirAttributes>.activities {
+            await old.end(nil, dismissalPolicy: .immediate)
+        }
+        activity = nil
+
+        // 2. Remise à zéro
         elixir = 5
         rate = 1
         startDate = Date()
+        lastPush = .distantPast
         running = true
 
         KeepAlive.shared.start()
-        startActivity()
 
+        // 3. Nouvelle Live Activity
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            status = "Live Activities désactivées dans Réglages"
+            return
+        }
+        do {
+            activity = try Activity.request(
+                attributes: ElixirAttributes(matchName: "Partie"),
+                content: ActivityContent(
+                    state: ElixirAttributes.ContentState(
+                        elixir: elixir, rate: rate, startDate: startDate),
+                    staleDate: nil),
+                pushType: nil
+            )
+            status = "En cours"
+        } catch {
+            status = "Erreur: \(error.localizedDescription)"
+        }
+
+        // 4. Chrono
+        timer?.invalidate()
         timer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.tick(0.1) }
         }
     }
 
-    func stop() {
+    private func endMatch() async {
         running = false
         timer?.invalidate()
         timer = nil
         KeepAlive.shared.stop()
-        status = "Arrêté"
 
-        let current = activity
+        for old in Activity<ElixirAttributes>.activities {
+            await old.end(nil, dismissalPolicy: .immediate)
+        }
         activity = nil
-        Task { await current?.end(nil, dismissalPolicy: .immediate) }
+        status = "Arrêté"
     }
 
-    // L'adversaire pose une carte qui coûte `cost`
     func spend(_ cost: Int) {
         guard running else { return }
         elixir = max(0, elixir - Double(cost))
@@ -58,36 +93,12 @@ final class ElixirEngine: ObservableObject {
         push(force: true)
     }
 
-    // MARK: - Boucle
-
     private func tick(_ dt: Double) {
         guard running else { return }
         elixir = min(10, elixir + dt * Double(rate) / secondsPerElixir)
         push(force: false)
     }
 
-    // MARK: - Live Activity
-
-    private func startActivity() {
-        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
-            status = "Live Activities désactivées dans Réglages"
-            return
-        }
-        let attributes = ElixirAttributes(matchName: "Partie")
-        let state = ElixirAttributes.ContentState(elixir: elixir, rate: rate, startDate: startDate)
-        do {
-            activity = try Activity.request(
-                attributes: attributes,
-                content: ActivityContent(state: state, staleDate: nil),
-                pushType: nil
-            )
-            status = "Live Activity active"
-        } catch {
-            status = "Erreur: \(error.localizedDescription)"
-        }
-    }
-
-    // On limite les mises à jour à environ 1 par seconde (iOS bride au-delà)
     private func push(force: Bool) {
         let now = Date()
         if !force && now.timeIntervalSince(lastPush) < 1.0 { return }
@@ -95,8 +106,6 @@ final class ElixirEngine: ObservableObject {
 
         guard let activity else { return }
         let state = ElixirAttributes.ContentState(elixir: elixir, rate: rate, startDate: startDate)
-        Task {
-            await activity.update(ActivityContent(state: state, staleDate: nil))
-        }
+        Task { await activity.update(ActivityContent(state: state, staleDate: nil)) }
     }
 }

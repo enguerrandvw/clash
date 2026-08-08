@@ -10,6 +10,7 @@ final class ElixirEngine: ObservableObject {
     @Published var status: String = "Prêt"
 
     let overlay = PiPOverlay()
+    let voice = VoiceRecognizer()
 
     private let baseSeconds: Double = 2.8
     private var timer: Timer?
@@ -19,6 +20,10 @@ final class ElixirEngine: ObservableObject {
     init() {
         setElixir(5)
         pushToOverlay()
+        // Une carte annoncée = son coût déduit de l'élixir adverse
+        voice.onCard = { [weak self] card in
+            Task { @MainActor in self?.spend(card.cost) }
+        }
     }
 
     // MARK: - Contrôles

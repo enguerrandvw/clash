@@ -161,14 +161,35 @@ enum CardCatalog {
     /// Renvoie la carte la plus proche d'une phrase et un score de 0 à 1.
     static func match(_ phrase: String) -> (card: Card, score: Double)? {
         let needle = normalize(phrase)
-        guard !needle.isEmpty else { return nil }
+        guard needle.count >= 3 else { return nil }
+        let needleWords = needle.split(separator: " ").map(String.init)
 
         var best: (Card, Double)?
         for card in all {
             var candidates = [card.name] + card.aliases
             candidates.append(card.id.replacingOccurrences(of: "-", with: " "))
             for c in candidates {
-                let s = similarity(needle, normalize(c))
+                let form = normalize(c)
+                guard form.count >= 3 else { continue }
+                var s = similarity(needle, form)
+
+                // La forme apparaît telle quelle dans la phrase entendue
+                if form.count >= 4 && needle.contains(form) { s = max(s, 0.96) }
+
+                // Tous les mots de la forme sont présents, même dispersés
+                let formWords = form.split(separator: " ").map(String.init)
+                if !formWords.isEmpty,
+                   formWords.allSatisfy({ needleWords.contains($0) }) {
+                    s = max(s, 0.93)
+                }
+
+                // Comparaison mot à mot : encaisse les pluriels et petites erreurs
+                for nw in needleWords where nw.count >= 4 {
+                    for fw in formWords where fw.count >= 4 {
+                        s = max(s, similarity(nw, fw) * 0.95)
+                    }
+                }
+
                 if s > (best?.1 ?? 0) { best = (card, s) }
             }
         }

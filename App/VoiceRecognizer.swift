@@ -11,21 +11,23 @@ final class VoiceRecognizer: ObservableObject {
     @Published var lastCard: Card?
     @Published var lastScore: Double = 0
     @Published var history: [String] = []
-    @Published var sessions = 0          // diagnostic : nombre de sessions ouvertes
 
-    /// Appelé à chaque carte reconnue avec un score suffisant.
+    // Diagnostics affichés dans le statut
+    @Published var sessions = 0        // sessions de reconnaissance ouvertes
+    @Published var heardWords = 0      // mots reçus du micro depuis le début
+    @Published var lastAttempt = ""    // dernier essai de correspondance, même refusé
+
     var onCard: ((Card) -> Void)?
-
-    /// Seuil d'acceptation. Plus bas = plus permissif, plus d'erreurs.
     var threshold: Double = 0.72
 
     private let engine = AVAudioEngine()
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "fr-FR"))
-    private var request: SFSpeechAudioBufferRecognitionRequest?
-    private var task: SFSpeechRecognitionTask?
-    private var restartTimer: Timer?
 
-    // Chaque session porte un numéro : les réponses des sessions périmées sont ignorées.
+    // Le moteur audio tourne en continu ; seule la requête change.
+    private var currentRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var task: SFSpeechRecognitionTask?
+    private var audioReady = false
+
     private var generation = 0
     private var restarting = false
 
@@ -60,6 +62,7 @@ final class VoiceRecognizer: ObservableObject {
             guard ok else { return }
             Task { @MainActor in
                 self.listening = true
+                guard self.setupAudioOnce() else { self.listening = false; return }
                 self.beginSession()
             }
         }
@@ -67,17 +70,62 @@ final class VoiceRecognizer: ObservableObject {
 
     func stop() {
         listening = false
-        restartTimer?.invalidate()
-        restartTimer = nil
-        generation += 1          // invalide toutes les réponses en vol
-        teardown()
+        generation += 1
+        task?.cancel(); task = nil
+        currentRequest?.endAudio(); currentRequest = nil
+        stopAudio()
         status = "Micro inactif"
     }
 
-    // MARK: - Session
+    // MARK: - Audio (démarré une seule fois, jamais interrompu ensuite)
+
+    private func setupAudioOnce() -> Bool {
+        guard !audioReady else { return true }
+
+        do {
+            let s = AVAudioSession.sharedInstance()
+            try s.setCategory(.playAndRecord, mode: .default,
+                              options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
+            try s.setActive(true)
+        } catch {
+            status = "Session audio: \(error.localizedDescription)"
+            return false
+        }
+
+        let input = engine.inputNode
+        let format = input.inputFormat(forBus: 0)
+        guard format.sampleRate > 0 else {
+            status = "Format micro invalide"
+            return false
+        }
+
+        input.removeTap(onBus: 0)
+        input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            // On alimente la requête courante, quelle qu'elle soit
+            self?.currentRequest?.append(buffer)
+        }
+
+        engine.prepare()
+        do { try engine.start() } catch {
+            status = "Micro: \(error.localizedDescription)"
+            return false
+        }
+
+        audioReady = true
+        return true
+    }
+
+    private func stopAudio() {
+        guard audioReady else { return }
+        engine.inputNode.removeTap(onBus: 0)
+        if engine.isRunning { engine.stop() }
+        audioReady = false
+    }
+
+    // MARK: - Session de reconnaissance
 
     private func beginSession() {
-        guard listening else { return }
+        guard listening, audioReady else { return }
         guard let recognizer, recognizer.isAvailable else {
             status = "Reconnaissance indisponible (français installé ?)"
             listening = false
@@ -88,86 +136,59 @@ final class VoiceRecognizer: ObservableObject {
         let gen = generation
         restarting = false
 
-        do {
-            let s = AVAudioSession.sharedInstance()
-            try s.setCategory(.playAndRecord, mode: .default,
-                              options: [.mixWithOthers, .defaultToSpeaker, .allowBluetooth])
-            try s.setActive(true)
-        } catch {
-            status = "Session audio: \(error.localizedDescription)"
-            return
-        }
-
         let req = SFSpeechAudioBufferRecognitionRequest()
         req.shouldReportPartialResults = true
         if recognizer.supportsOnDeviceRecognition {
             req.requiresOnDeviceRecognition = true
         }
-        request = req
+        currentRequest = req
 
         processedSegments = 0
         pending = []
-
-        let input = engine.inputNode
-        input.removeTap(onBus: 0)
-        let format = input.outputFormat(forBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: format) { buffer, _ in
-            req.append(buffer)
-        }
-
-        if !engine.isRunning {
-            engine.prepare()
-            do { try engine.start() } catch {
-                status = "Micro: \(error.localizedDescription)"
-                return
-            }
-        }
+        transcript = ""
 
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             Task { @MainActor in
-                guard let self, gen == self.generation else { return }   // session périmée
+                guard let self, gen == self.generation else { return }
                 if let result {
                     self.transcript = result.bestTranscription.formattedString
                     self.handle(result.bestTranscription.segments)
                     if result.isFinal {
                         self.flushPending()
-                        self.scheduleRestart()
+                        self.scheduleRestart(reason: "fin")
                     }
-                } else if error != nil {
-                    self.scheduleRestart()
+                } else if let error {
+                    self.scheduleRestart(reason: "err \((error as NSError).code)")
                 }
             }
         }
 
         sessions += 1
-        status = "À l'écoute"
+        refreshStatus()
     }
 
-    /// Un seul redémarrage à la fois, jamais réentrant.
-    private func scheduleRestart() {
+    private func scheduleRestart(reason: String) {
         guard listening, !restarting else { return }
         restarting = true
-        generation += 1                  // les réponses de l'ancienne tâche seront ignorées
-        teardown()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in
+        generation += 1
+        task?.cancel(); task = nil
+        currentRequest?.endAudio(); currentRequest = nil
+        // Le moteur audio continue de tourner : rien d'autre à démonter.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
             guard let self, self.listening else { return }
             self.beginSession()
         }
     }
 
-    private func teardown() {
-        engine.inputNode.removeTap(onBus: 0)
-        if engine.isRunning { engine.stop() }
-        request?.endAudio()
-        task?.cancel()
-        request = nil
-        task = nil
+    private func refreshStatus() {
+        var s = "À l'écoute · S\(sessions) · \(heardWords) mots"
+        if !lastAttempt.isEmpty { s += " · \(lastAttempt)" }
+        status = s
     }
 
     // MARK: - Analyse
 
     private func handle(_ segments: [SFTranscriptionSegment]) {
-        // Nouvelle session ou transcription révisée à la baisse : on repart de zéro
         if segments.count < processedSegments {
             processedSegments = 0
             pending = []
@@ -176,36 +197,39 @@ final class VoiceRecognizer: ObservableObject {
 
         for i in processedSegments..<segments.count {
             pending.append(segments[i].substring)
+            heardWords += 1
         }
         processedSegments = segments.count
         matchPending(keepTail: true)
+        refreshStatus()
     }
 
-    /// Vide la file en fin de session, sans garder de mots en attente.
     private func flushPending() {
         matchPending(keepTail: false)
         pending = []
         processedSegments = 0
     }
 
-    /// Teste des fenêtres de 3, 2 puis 1 mot depuis le début de la file.
-    /// `keepTail` garde les derniers mots au cas où la phrase serait incomplète.
     private func matchPending(keepTail: Bool) {
         while !pending.isEmpty {
             var matched = false
             var len = min(3, pending.count)
             while len >= 1 {
                 let phrase = pending.prefix(len).joined(separator: " ")
-                if let (card, score) = CardCatalog.match(phrase), score >= threshold {
-                    emit(card, score, heard: phrase)
-                    pending.removeFirst(len)
-                    matched = true
-                    break
+                if let (card, score) = CardCatalog.match(phrase) {
+                    if len == 1 || score >= threshold {
+                        lastAttempt = String(format: "%@→%@ %.2f", phrase, card.name, score)
+                    }
+                    if score >= threshold {
+                        emit(card, score, heard: phrase)
+                        pending.removeFirst(len)
+                        matched = true
+                        break
+                    }
                 }
                 len -= 1
             }
             if !matched {
-                // Mot inutile : on l'abandonne, sauf s'il peut compléter une phrase
                 if keepTail && pending.count <= 2 { break }
                 pending.removeFirst()
             }
@@ -213,7 +237,6 @@ final class VoiceRecognizer: ObservableObject {
     }
 
     private func emit(_ card: Card, _ score: Double, heard: String) {
-        // Anti-doublon : la même carte deux fois en moins de 1,2 s
         let now = Date()
         if lastEmit.0 == card.id, now.timeIntervalSince(lastEmit.1) < 1.2 { return }
         lastEmit = (card.id, now)

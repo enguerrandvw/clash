@@ -18,6 +18,8 @@ final class VoiceRecognizer: ObservableObject {
     @Published var lastAttempt = ""    // dernier essai de correspondance, même refusé
 
     var onCard: ((Card) -> Void)?
+    /// Appelé quand l'utilisateur annonce un nombre : « sept » → 7
+    var onElixir: ((Int) -> Void)?
     var threshold: Double = 0.72
 
     private let engine = AVAudioEngine()
@@ -34,6 +36,16 @@ final class VoiceRecognizer: ObservableObject {
     private var lastWords: [String] = []   // dernière transcription vue, mot à mot
     private var pending: [String] = []
     private var lastEmit: (String, Date) = ("", .distantPast)
+
+    // Nombres reconnus à l'oral pour recaler l'élixir
+    private static let numberWords: [String: Int] = [
+        "zero": 0, "0": 0, "un": 1, "1": 1, "une": 1,
+        "deux": 2, "2": 2, "trois": 3, "3": 3, "quatre": 4, "4": 4,
+        "cinq": 5, "5": 5, "six": 6, "6": 6, "sept": 7, "7": 7,
+        "huit": 8, "8": 8, "neuf": 9, "9": 9, "dix": 10, "10": 10
+    ]
+    // « trois » peut commencer « Trois mousquetaires » : on attend la suite
+    private static let ambiguousNumbers: Set<String> = ["trois", "3"]
 
     // MARK: - Autorisations
 
@@ -234,6 +246,22 @@ final class VoiceRecognizer: ObservableObject {
                 }
                 len -= 1
             }
+            // Aucun nom de carte : le mot est-il un nombre ?
+            if !matched, let first = pending.first {
+                let w = CardCatalog.normalize(first)
+                if let value = Self.numberWords[w] {
+                    let risky = Self.ambiguousNumbers.contains(w)
+                    // « trois » seul en fin de phrase : on patiente, ce peut être
+                    // le début de « trois mousquetaires »
+                    if !(risky && keepTail && pending.count == 1) {
+                        lastAttempt = "\(first) → élixir \(value)"
+                        onElixir?(value)
+                        pending.removeFirst()
+                        matched = true
+                    }
+                }
+            }
+
             if !matched {
                 if keepTail && pending.count <= 2 { break }
                 pending.removeFirst()

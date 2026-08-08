@@ -17,7 +17,6 @@ final class ElixirEngine: ObservableObject {
     private var secondsPerElixir: Double { baseSeconds / Double(rate) }
 
     init() {
-        overlay.prepare()
         setElixir(5)
         pushToOverlay()
     }

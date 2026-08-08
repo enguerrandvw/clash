@@ -18,8 +18,10 @@ final class VoiceRecognizer: ObservableObject {
     @Published var lastAttempt = ""    // dernier essai de correspondance, même refusé
 
     var onCard: ((Card) -> Void)?
-    /// Appelé quand l'utilisateur annonce un nombre : « sept » → 7
-    var onElixir: ((Int) -> Void)?
+    /// « trois » → dépenser 3 élixirs
+    var onSpendAmount: ((Int) -> Void)?
+    /// « début sept » → fixer l'élixir à 7
+    var onSetElixir: ((Int) -> Void)?
     var threshold: Double = 0.72
 
     private let engine = AVAudioEngine()
@@ -46,6 +48,13 @@ final class VoiceRecognizer: ObservableObject {
     ]
     // « trois » peut commencer « Trois mousquetaires » : on attend la suite
     private static let ambiguousNumbers: Set<String> = ["trois", "3"]
+
+    // Mots qui annoncent une valeur absolue plutôt qu'une dépense
+    private static let setMarkers: Set<String> = [
+        "debut", "depart", "mettre", "met", "mets", "fixe", "base", "start"
+    ]
+    private var awaitingSet = false
+    private var awaitingSetSince = Date.distantPast
 
     // MARK: - Autorisations
 
@@ -158,6 +167,7 @@ final class VoiceRecognizer: ObservableObject {
         lastWords = []
         pending = []
         transcript = ""
+        awaitingSet = false
 
         task = recognizer.recognitionTask(with: req) { [weak self] result, error in
             Task { @MainActor in
@@ -229,6 +239,17 @@ final class VoiceRecognizer: ObservableObject {
 
     private func matchPending(keepTail: Bool) {
         while !pending.isEmpty {
+
+            // « début » annonce que le nombre suivant est une valeur, pas une dépense
+            if let first = pending.first,
+               Self.setMarkers.contains(CardCatalog.normalize(first)) {
+                awaitingSet = true
+                awaitingSetSince = Date()
+                lastAttempt = "début… (j'attends le nombre)"
+                pending.removeFirst()
+                continue
+            }
+
             var matched = false
             var len = min(3, pending.count)
             while len >= 1 {
@@ -254,8 +275,18 @@ final class VoiceRecognizer: ObservableObject {
                     // « trois » seul en fin de phrase : on patiente, ce peut être
                     // le début de « trois mousquetaires »
                     if !(risky && keepTail && pending.count == 1) {
-                        lastAttempt = "\(first) → élixir \(value)"
-                        onElixir?(value)
+                        // Le marqueur « début » n'est valable que quelques secondes
+                        let fixe = awaitingSet
+                            && Date().timeIntervalSince(awaitingSetSince) < 4
+                        awaitingSet = false
+
+                        if fixe {
+                            lastAttempt = "début \(value) → élixir fixé"
+                            onSetElixir?(value)
+                        } else {
+                            lastAttempt = "\(first) → -\(value) élixir"
+                            onSpendAmount?(value)
+                        }
                         pending.removeFirst()
                         matched = true
                     }

@@ -7,21 +7,20 @@ struct ElixirLiveActivity: Widget {
 
         ActivityConfiguration(for: ElixirAttributes.self) { context in
 
-            // --- Écran verrouillé / bannière ---
-            HStack {
-                VStack(alignment: .leading) {
+            // --- Écran verrouillé ---
+            VStack(alignment: .leading, spacing: 8) {
+                HStack {
                     Text("Élixir adverse").font(.caption).foregroundStyle(.secondary)
-                    Text(String(format: "%.1f", context.state.elixir))
-                        .font(.system(size: 38, weight: .bold, design: .rounded))
-                        .foregroundStyle(.purple)
+                    Spacer()
+                    Text("x\(context.state.rate)").font(.caption.bold())
                 }
-                Spacer()
-                VStack(alignment: .trailing) {
-                    Text("x\(context.state.rate)").font(.caption)
-                    Text(context.state.startDate, style: .timer)
-                        .font(.system(size: 26, weight: .semibold, design: .monospaced))
-                        .frame(width: 110, alignment: .trailing)
+                ProgressView(timerInterval: context.state.fillRange, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
                 }
+                .progressViewStyle(.linear)
+                .tint(.purple)
             }
             .padding()
 
@@ -29,31 +28,54 @@ struct ElixirLiveActivity: Widget {
 
             DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
-                    Text(String(format: "%.1f", context.state.elixir))
-                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                    Image(systemName: "drop.fill")
                         .foregroundStyle(.purple)
-                        .padding(.leading, 4)
+                        .padding(.leading, 6)
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text("x\(context.state.rate)")
-                        .font(.system(size: 20, weight: .semibold, design: .rounded))
-                        .padding(.trailing, 4)
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .padding(.trailing, 6)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    Text(context.state.startDate, style: .timer)
-                        .font(.system(size: 22, weight: .medium, design: .monospaced))
-                        .frame(maxWidth: .infinity)
+                    VStack(spacing: 6) {
+                        // Barre auto-animée : 0 à 10 élixir
+                        ProgressView(timerInterval: context.state.fillRange, countsDown: false) {
+                            EmptyView()
+                        } currentValueLabel: {
+                            EmptyView()
+                        }
+                        .progressViewStyle(.linear)
+                        .tint(.purple)
+
+                        // Temps restant avant 10 élixir (auto-animé aussi)
+                        Text(timerInterval: context.state.fillRange, countsDown: true)
+                            .font(.system(size: 13, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                    }
+                    .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Image(systemName: "drop.fill").foregroundStyle(.purple)
-            } compactTrailing: {
-                Text(String(format: "%.1f", context.state.elixir))
-                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                    .monospacedDigit()
-            } minimal: {
-                Text(String(format: "%.0f", context.state.elixir))
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+                Image(systemName: "drop.fill")
                     .foregroundStyle(.purple)
+            } compactTrailing: {
+                ProgressView(timerInterval: context.state.fillRange, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.circular)
+                .tint(.purple)
+                .frame(width: 22)
+            } minimal: {
+                ProgressView(timerInterval: context.state.fillRange, countsDown: false) {
+                    EmptyView()
+                } currentValueLabel: {
+                    EmptyView()
+                }
+                .progressViewStyle(.circular)
+                .tint(.purple)
             }
         }
     }

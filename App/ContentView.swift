@@ -3,7 +3,6 @@ import AVKit
 
 struct ContentView: View {
     @EnvironmentObject var engine: ElixirEngine
-    @ObservedObject private var dummy = DummyObserver()
 
     private let costs = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -12,7 +11,7 @@ struct ContentView: View {
             VStack(spacing: 16) {
 
                 PiPPreview(overlay: engine.overlay)
-                    .frame(height: 105)
+                    .frame(height: 100)
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 20)
 
@@ -33,8 +32,8 @@ struct ContentView: View {
                             engine.spend(c)
                         } label: {
                             Text("-\(c)")
-                                .font(.system(size: 24, weight: .semibold, design: .rounded))
-                                .frame(maxWidth: .infinity, minHeight: 50)
+                                .font(.system(size: 22, weight: .semibold, design: .rounded))
+                                .frame(maxWidth: .infinity, minHeight: 46)
                                 .background(Color.purple.opacity(0.15))
                                 .clipShape(RoundedRectangle(cornerRadius: 14))
                         }
@@ -55,40 +54,101 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 24)
 
-                Button {
-                    engine.overlay.start()
-                } label: {
-                    Text("Ouvrir la fenêtre flottante")
-                        .font(.subheadline.weight(.medium))
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .background(Color.blue.opacity(0.15))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .padding(.horizontal, 24)
+                VoiceSection(voice: engine.voice)
 
-                VStack(spacing: 3) {
-                    Text(engine.status)
-                    Text("Images rendues : \(engine.overlay.framesSent)")
-                    Text(engine.overlay.isPossible ? "PiP disponible" : "PiP indisponible")
-                    Text(engine.overlay.isActive ? "Fenêtre active" : "Fenêtre fermée")
-                    if let err = engine.overlay.lastError {
-                        Text(err).foregroundStyle(.red)
-                    }
-                }
-                .font(.footnote)
-                .foregroundStyle(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 20)
-                .padding(.bottom, 30)
+                OverlayStatus(overlay: engine.overlay, engineStatus: engine.status)
+                    .padding(.bottom, 30)
             }
             .padding(.vertical, 16)
         }
     }
 }
 
-private final class DummyObserver: ObservableObject {}
+// MARK: - Banc d'essai vocal
 
-// Conteneur qui garde la couche vidéo à la bonne taille
+struct VoiceSection: View {
+    @ObservedObject var voice: VoiceRecognizer
+
+    var body: some View {
+        VStack(spacing: 10) {
+
+            Button {
+                voice.toggle()
+            } label: {
+                HStack {
+                    Image(systemName: voice.listening ? "mic.fill" : "mic.slash.fill")
+                    Text(voice.listening ? "Micro actif" : "Activer le micro")
+                }
+                .font(.headline)
+                .frame(maxWidth: .infinity, minHeight: 50)
+                .background(voice.listening ? Color.orange : Color.gray.opacity(0.25))
+                .foregroundStyle(voice.listening ? .white : .primary)
+                .clipShape(RoundedRectangle(cornerRadius: 14))
+            }
+
+            Text(voice.status)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            if let c = voice.lastCard {
+                Text("\(c.name) — \(c.cost) élixir")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.purple)
+                Text(String(format: "confiance %.0f %%", voice.lastScore * 100))
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+            }
+
+            if !voice.transcript.isEmpty {
+                Text(voice.transcript)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            if !voice.history.isEmpty {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(voice.history, id: \.self) { line in
+                        Text(line).font(.caption2)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 24)
+    }
+}
+
+// MARK: - Diagnostics
+
+struct OverlayStatus: View {
+    @ObservedObject var overlay: PiPOverlay
+    let engineStatus: String
+
+    var body: some View {
+        VStack(spacing: 3) {
+            Text(engineStatus)
+            Text("Images rendues : \(overlay.framesSent)")
+            Text(overlay.isPossible ? "PiP disponible" : "PiP indisponible")
+            Text(overlay.isActive ? "Fenêtre active" : "Fenêtre fermée")
+            if let err = overlay.lastError {
+                Text(err).foregroundStyle(.red)
+            }
+            Button("Ouvrir la fenêtre flottante") { overlay.start() }
+                .font(.subheadline)
+                .padding(.top, 6)
+        }
+        .font(.footnote)
+        .foregroundStyle(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal, 20)
+    }
+}
+
+// MARK: - Conteneur vidéo
+
 struct PiPPreview: UIViewRepresentable {
     let overlay: PiPOverlay
 
@@ -97,7 +157,6 @@ struct PiPPreview: UIViewRepresentable {
         v.backgroundColor = .black
         v.hosted = overlay.displayLayer
         v.layer.addSublayer(overlay.displayLayer)
-        // Le contrôleur PiP ne peut être créé qu'une fois la couche en place
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
             overlay.attachController()
         }
@@ -109,7 +168,6 @@ struct PiPPreview: UIViewRepresentable {
 
 final class LayerHostView: UIView {
     var hosted: CALayer?
-
     override func layoutSubviews() {
         super.layoutSubviews()
         CATransaction.begin()

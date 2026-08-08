@@ -31,7 +31,7 @@ final class VoiceRecognizer: ObservableObject {
     private var generation = 0
     private var restarting = false
 
-    private var processedSegments = 0
+    private var lastWords: [String] = []   // dernière transcription vue, mot à mot
     private var pending: [String] = []
     private var lastEmit: (String, Date) = ("", .distantPast)
 
@@ -143,7 +143,7 @@ final class VoiceRecognizer: ObservableObject {
         }
         currentRequest = req
 
-        processedSegments = 0
+        lastWords = []
         pending = []
         transcript = ""
 
@@ -189,17 +189,22 @@ final class VoiceRecognizer: ObservableObject {
     // MARK: - Analyse
 
     private func handle(_ segments: [SFTranscriptionSegment]) {
-        if segments.count < processedSegments {
-            processedSegments = 0
-            pending = []
-        }
-        guard segments.count > processedSegments else { return }
+        let words = segments.map { $0.substring }
 
-        for i in processedSegments..<segments.count {
-            pending.append(segments[i].substring)
-            heardWords += 1
+        // iOS ne rallonge pas toujours la phrase : après une pause il la REMPLACE.
+        // On compare donc mot à mot et on ne traite que ce qui a réellement changé.
+        var common = 0
+        while common < min(words.count, lastWords.count),
+              words[common].caseInsensitiveCompare(lastWords[common]) == .orderedSame {
+            common += 1
         }
-        processedSegments = segments.count
+        let fresh = Array(words[common...])
+        lastWords = words
+
+        guard !fresh.isEmpty else { return }
+        pending.append(contentsOf: fresh)
+        heardWords += fresh.count
+
         matchPending(keepTail: true)
         refreshStatus()
     }
@@ -207,7 +212,7 @@ final class VoiceRecognizer: ObservableObject {
     private func flushPending() {
         matchPending(keepTail: false)
         pending = []
-        processedSegments = 0
+        lastWords = []
     }
 
     private func matchPending(keepTail: Bool) {
@@ -238,7 +243,7 @@ final class VoiceRecognizer: ObservableObject {
 
     private func emit(_ card: Card, _ score: Double, heard: String) {
         let now = Date()
-        if lastEmit.0 == card.id, now.timeIntervalSince(lastEmit.1) < 1.2 { return }
+        if lastEmit.0 == card.id, now.timeIntervalSince(lastEmit.1) < 1.5 { return }
         lastEmit = (card.id, now)
 
         lastCard = card

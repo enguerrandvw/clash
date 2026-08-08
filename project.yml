@@ -3,7 +3,7 @@ name: ClashElixir
 options:
   bundleIdPrefix: com.monprojet
   deploymentTarget:
-    iOS: "16.2"
+    iOS: "16.0"
   createIntermediateGroups: true
 
 targets:
@@ -12,7 +12,6 @@ targets:
     type: application
     platform: iOS
     sources:
-      - path: Shared
       - path: App
     settings:
       base:
@@ -21,26 +20,6 @@ targets:
         MARKETING_VERSION: "1.0"
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
-        GENERATE_INFOPLIST_FILE: NO
-        SWIFT_VERSION: "5.0"
-        TARGETED_DEVICE_FAMILY: "1"
-    dependencies:
-      - target: ElixirWidget
-        embed: true
-
-  ElixirWidget:
-    type: app-extension
-    platform: iOS
-    sources:
-      - path: Shared
-      - path: Widget
-    settings:
-      base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.monprojet.clashelixir.widget
-        PRODUCT_NAME: ElixirWidget
-        MARKETING_VERSION: "1.0"
-        CURRENT_PROJECT_VERSION: "1"
-        INFOPLIST_FILE: Widget/Info.plist
         GENERATE_INFOPLIST_FILE: NO
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"

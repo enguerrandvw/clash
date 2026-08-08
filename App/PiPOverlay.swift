@@ -1,24 +1,22 @@
 import UIKit
 import AVKit
 import AVFoundation
-import Combine
 
-// Génère un flux vidéo image par image et l'affiche dans la fenêtre
-// flottante du système, qui reste visible au-dessus des autres apps.
 @MainActor
 final class PiPOverlay: NSObject, ObservableObject {
 
     @Published var isActive = false
     @Published var isPossible = false
     @Published var lastError: String?
+    @Published var framesSent = 0
 
-    // Valeurs affichées, mises à jour librement par le moteur
     var elixir: Double = 5
     var rate: Int = 1
     var hand: [String] = []
 
     let displayLayer = AVSampleBufferDisplayLayer()
     private var controller: AVPictureInPictureController?
+    private var possibleObs: NSKeyValueObservation?
     private var pool: CVPixelBufferPool?
     private var timer: Timer?
     private var frameIndex: Int64 = 0
@@ -26,25 +24,29 @@ final class PiPOverlay: NSObject, ObservableObject {
     override init() {
         super.init()
         displayLayer.videoGravity = .resizeAspect
+        displayLayer.backgroundColor = UIColor.black.cgColor
         makePool()
+        configureAudio()
+        startRendering()
     }
 
-    // MARK: - Cycle de vie
-
-    func prepare() {
+    private func configureAudio() {
         do {
-            let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
-            try session.setActive(true)
+            let s = AVAudioSession.sharedInstance()
+            try s.setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
+            try s.setActive(true)
         } catch {
             lastError = "Audio: \(error.localizedDescription)"
         }
+    }
 
+    // Appelé UNE FOIS la couche insérée dans la hiérarchie de vues.
+    func attachController() {
+        guard controller == nil else { return }
         guard AVPictureInPictureController.isPictureInPictureSupported() else {
-            lastError = "PiP non supporté sur cet appareil"
+            lastError = "PiP non supporté"
             return
         }
-
         let source = AVPictureInPictureController.ContentSource(
             sampleBufferDisplayLayer: displayLayer,
             playbackDelegate: self
@@ -53,30 +55,32 @@ final class PiPOverlay: NSObject, ObservableObject {
         c.delegate = self
         c.canStartPictureInPictureAutomaticallyFromInline = true
         controller = c
-        isPossible = c.isPictureInPicturePossible
 
-        startRendering()
+        possibleObs = c.observe(\.isPictureInPicturePossible, options: [.initial, .new]) {
+            [weak self] ctrl, _ in
+            Task { @MainActor in self?.isPossible = ctrl.isPictureInPicturePossible }
+        }
     }
 
     func start() {
+        attachController()
         startRendering()
-        guard let c = controller else { return }
-        if !c.isPictureInPictureActive {
-            c.startPictureInPicture()
+        guard let c = controller else { lastError = "Contrôleur absent"; return }
+        guard c.isPictureInPicturePossible else {
+            lastError = "PiP pas encore prêt, réessaie dans 1 s"
+            return
         }
+        if !c.isPictureInPictureActive { c.startPictureInPicture() }
     }
 
     func stop() {
         controller?.stopPictureInPicture()
-        timer?.invalidate()
-        timer = nil
     }
 
     // MARK: - Rendu
 
     private func startRendering() {
         guard timer == nil else { return }
-        // 12 images par seconde : largement suffisant, très peu coûteux
         let t = Timer(timeInterval: 1.0 / 12.0, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.renderFrame() }
         }
@@ -92,7 +96,8 @@ final class PiPOverlay: NSObject, ObservableObject {
             kCVPixelBufferIOSurfacePropertiesKey as String: [:] as CFDictionary
         ]
         var p: CVPixelBufferPool?
-        CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &p)
+        let st = CVPixelBufferPoolCreate(kCFAllocatorDefault, nil, attrs as CFDictionary, &p)
+        if st != kCVReturnSuccess { lastError = "Pool image: \(st)" }
         pool = p
     }
 
@@ -116,8 +121,6 @@ final class PiPOverlay: NSObject, ObservableObject {
                space: CGColorSpaceCreateDeviceRGB(),
                bitmapInfo: CGImageAlphaInfo.premultipliedFirst.rawValue
                    | CGBitmapInfo.byteOrder32Little.rawValue) {
-
-            // CoreGraphics a l'origine en bas : on retourne pour dessiner normalement
             ctx.translateBy(x: 0, y: CGFloat(OverlayRenderer.height))
             ctx.scaleBy(x: 1, y: -1)
             OverlayRenderer.draw(into: ctx, elixir: elixir, rate: rate, hand: hand)
@@ -126,6 +129,7 @@ final class PiPOverlay: NSObject, ObservableObject {
 
         guard let sample = makeSampleBuffer(from: buffer) else { return }
         displayLayer.enqueue(sample)
+        framesSent += 1
     }
 
     private func makeSampleBuffer(from pixelBuffer: CVPixelBuffer) -> CMSampleBuffer? {
@@ -148,28 +152,38 @@ final class PiPOverlay: NSObject, ObservableObject {
             imageBuffer: pixelBuffer,
             formatDescription: format,
             sampleTiming: &timing,
-            sampleBufferOut: &sample) == noErr else { return nil }
+            sampleBufferOut: &sample) == noErr, let sample else { return nil }
 
+        // SANS CECI, RIEN NE S'AFFICHE : on force l'affichage immédiat
+        if let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sample, createIfNecessary: true),
+           CFArrayGetCount(attachments) > 0 {
+            let dict = unsafeBitCast(CFArrayGetValueAtIndex(attachments, 0),
+                                     to: CFMutableDictionary.self)
+            CFDictionarySetValue(
+                dict,
+                Unmanaged.passUnretained(kCMSampleAttachmentKey_DisplayImmediately).toOpaque(),
+                Unmanaged.passUnretained(kCFBooleanTrue).toOpaque()
+            )
+        }
         return sample
     }
 }
 
-// MARK: - Délégués
-
 extension PiPOverlay: AVPictureInPictureControllerDelegate {
 
     nonisolated func pictureInPictureControllerDidStartPictureInPicture(
-        _ controller: AVPictureInPictureController) {
-        Task { @MainActor in self.isActive = true }
+        _ c: AVPictureInPictureController) {
+        Task { @MainActor in self.isActive = true; self.lastError = nil }
     }
 
     nonisolated func pictureInPictureControllerDidStopPictureInPicture(
-        _ controller: AVPictureInPictureController) {
+        _ c: AVPictureInPictureController) {
         Task { @MainActor in self.isActive = false }
     }
 
     nonisolated func pictureInPictureController(
-        _ controller: AVPictureInPictureController,
+        _ c: AVPictureInPictureController,
         failedToStartPictureInPictureWithError error: Error) {
         Task { @MainActor in self.lastError = error.localizedDescription }
     }
@@ -178,23 +192,22 @@ extension PiPOverlay: AVPictureInPictureControllerDelegate {
 extension PiPOverlay: AVPictureInPictureSampleBufferPlaybackDelegate {
 
     nonisolated func pictureInPictureController(
-        _ controller: AVPictureInPictureController, setPlaying playing: Bool) {}
+        _ c: AVPictureInPictureController, setPlaying playing: Bool) {}
 
-    // Flux continu sans fin : pas de barre de lecture
     nonisolated func pictureInPictureControllerTimeRangeForPlayback(
-        _ controller: AVPictureInPictureController) -> CMTimeRange {
+        _ c: AVPictureInPictureController) -> CMTimeRange {
         CMTimeRange(start: .negativeInfinity, duration: .positiveInfinity)
     }
 
     nonisolated func pictureInPictureControllerIsPlaybackPaused(
-        _ controller: AVPictureInPictureController) -> Bool { false }
+        _ c: AVPictureInPictureController) -> Bool { false }
 
     nonisolated func pictureInPictureController(
-        _ controller: AVPictureInPictureController,
+        _ c: AVPictureInPictureController,
         didTransitionToRenderSize newRenderSize: CMVideoDimensions) {}
 
     nonisolated func pictureInPictureController(
-        _ controller: AVPictureInPictureController,
+        _ c: AVPictureInPictureController,
         skipByInterval skipInterval: CMTime,
         completion: @escaping () -> Void) { completion() }
 }

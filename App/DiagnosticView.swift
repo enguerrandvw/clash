@@ -51,7 +51,8 @@ struct DiagnosticView: View {
                         }
                     }
                     .frame(height: 22)
-                    Text(String(format: "crête %.3f", bridge.audioPeak))
+                    Text(String(format: "crête %.3f · maximum atteint %.3f",
+                                bridge.audioPeak, bridge.audioPeakMax))
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(.horizontal, 20)

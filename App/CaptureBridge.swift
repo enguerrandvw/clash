@@ -19,6 +19,7 @@ final class CaptureBridge: ObservableObject {
     @Published var audioPeakMax: Float = 0
     @Published var band: [Int] = []
     @Published var rowProfile: [Int] = []
+    @Published var digitImage: UIImage?
     @Published var bestRowFrac: Double = 0
     @Published var pixelFormat = "?"
     @Published var audioFormat = "?"
@@ -93,8 +94,12 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    if let b64 = j["digit"] as? String, !b64.isEmpty,
+                       let raw = Data(base64Encoded: b64), raw.count == 640 {
+                        self.digitImage = CaptureBridge.grayImage(raw, w: 32, h: 20)
+                    }
                     // Un segment est considéré rempli si sa couleur est vive
-                    let filled = (j["band"] as? [Int] ?? []).filter { $0 > 25 }.count
+                    let filled = (j["band"] as? [Int] ?? []).filter { $0 > 18 }.count
                     self.myElixir = (j["band"] as? [Int] ?? []).isEmpty ? -1 : filled
                     self.bestRowFrac  = j["bestRowFrac"] as? Double ?? 0
                     self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
@@ -113,6 +118,23 @@ final class CaptureBridge: ObservableObject {
             ? String(format: "en direct (%.1f s)", age)
             : (lastPacket == .distantPast ? "aucun paquet reçu"
                                           : String(format: "figé depuis %.0f s", age))
+    }
+}
+
+extension CaptureBridge {
+    /// Reconstruit une image à partir de pixels en niveaux de gris.
+    static func grayImage(_ data: Data, w: Int, h: Int) -> UIImage? {
+        guard let provider = CGDataProvider(data: data as CFData),
+              let cg = CGImage(width: w, height: h,
+                               bitsPerComponent: 8, bitsPerPixel: 8,
+                               bytesPerRow: w,
+                               space: CGColorSpaceCreateDeviceGray(),
+                               bitmapInfo: CGBitmapInfo(rawValue: 0),
+                               provider: provider, decode: nil,
+                               shouldInterpolate: false,
+                               intent: .defaultIntent)
+        else { return nil }
+        return UIImage(cgImage: cg)
     }
 }
 

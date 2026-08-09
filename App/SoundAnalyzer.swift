@@ -124,7 +124,7 @@ final class SoundAnalyzer: ObservableObject {
         pendingIndex = 0
         pendingOnset = Onset(at: now, strength: jump, signature: [],
                              myElixirBefore: myElixir, myElixirAfter: myElixir,
-                             attribution: "…", match: nil)
+                             attribution: "…", result: nil)
     }
 
     func reset() {

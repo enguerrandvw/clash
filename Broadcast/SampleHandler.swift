@@ -12,6 +12,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var frameCount = 0
     private var audioCount = 0
     private var audioPeak: Float = 0
+    private var audioPeakMax: Float = 0
     private var lastSend = Date.distantPast
     private var startedAt = Date()
 
@@ -43,7 +44,9 @@ class SampleHandler: RPBroadcastSampleHandler {
                 if frameCount % 15 == 0 { readBand(sb) }
             case .audioApp:
                 audioCount += 1
-                audioPeak = max(audioPeak, readPeak(sb))
+                let p = readPeak(sb)
+                audioPeak = max(audioPeak, p)
+                audioPeakMax = max(audioPeakMax, p)
             default:
                 break
             }
@@ -93,14 +96,27 @@ class SampleHandler: RPBroadcastSampleHandler {
             let ph = CVPixelBufferGetHeightOfPlane(pb, 0)
             let pw = CVPixelBufferGetWidthOfPlane(pb, 0)
             guard bpr > 0, ph > 0, pw > 0 else { return }
-            let total = bpr * ph
-            let yy = min(ph - 1, Int(Double(ph) * 0.88))
-            let buf = base.assumingMemoryBound(to: UInt8.self)
-            for i in 0..<10 {
-                let x = Int(Double(pw) * (0.10 + 0.08 * Double(i)))
-                let off = yy * bpr + x
-                guard x < pw, off >= 0, off < total else { continue }
-                out.append(Int(buf[off]))
+            _ = (base, bpr, ph, pw, total)
+
+            // Plan 1 : chroma Cb/Cr entrelacée, demi-résolution.
+            // L'écart à 128 mesure la saturation : élevé pour le violet,
+            // proche de zéro pour le blanc, le gris et le noir.
+            if CVPixelBufferGetPlaneCount(pb) > 1,
+               let cbase = CVPixelBufferGetBaseAddressOfPlane(pb, 1) {
+                let cbpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 1)
+                let cw = CVPixelBufferGetWidthOfPlane(pb, 1)
+                let ch = CVPixelBufferGetHeightOfPlane(pb, 1)
+                let ctotal = cbpr * ch
+                let cy = min(ch - 1, Int(Double(ch) * 0.88))
+                let cbuf = cbase.assumingMemoryBound(to: UInt8.self)
+                for i in 0..<10 {
+                    let x = Int(Double(cw) * (0.10 + 0.08 * Double(i)))
+                    let off = cy * cbpr + x * 2
+                    guard x < cw, off >= 0, off + 1 < ctotal else { continue }
+                    let cb = Int(cbuf[off]) - 128
+                    let cr = Int(cbuf[off + 1]) - 128
+                    out.append(abs(cb) + abs(cr))
+                }
             }
         }
 
@@ -180,6 +196,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             "frames": frameCount,
             "audioBuffers": audioCount,
             "audioPeak": audioPeak,
+            "audioPeakMax": audioPeakMax,
             "band": bandSamples,
             "pixelFormat": pixelFormat,
             "audioFormat": audioFormat,

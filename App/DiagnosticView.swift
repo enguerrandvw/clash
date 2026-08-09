@@ -3,7 +3,7 @@ import SwiftUI
 // Écran de validation de la capture. Il répond à trois questions :
 // l'App Group fonctionne-t-il, l'image arrive-t-elle, l'audio du jeu arrive-t-il.
 struct DiagnosticView: View {
-    @StateObject private var bridge = CaptureBridge()
+    @ObservedObject private var bridge = CaptureBridge.shared
 
     var body: some View {
         ScrollView {

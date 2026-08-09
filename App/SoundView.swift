@@ -1,0 +1,101 @@
+import SwiftUI
+
+// Écran d'écoute : spectrogramme en direct et journal des impulsions détectées.
+struct SoundView: View {
+    @ObservedObject private var sound = SoundAnalyzer.shared
+    @ObservedObject private var capture = CaptureBridge.shared
+
+    var body: some View {
+        VStack(spacing: 14) {
+
+            Text("Analyse sonore")
+                .font(.headline)
+
+            // Spectrogramme : le temps va de gauche à droite,
+            // les graves en bas, les aigus en haut.
+            Spectrogram(frames: sound.frames)
+                .frame(height: 150)
+                .background(Color.black)
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .padding(.horizontal, 16)
+
+            HStack {
+                Text("Énergie \(Int(sound.energy))")
+                Spacer()
+                Text("Ton élixir : \(capture.myElixir)")
+            }
+            .font(.footnote).foregroundStyle(.secondary)
+            .padding(.horizontal, 20)
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Sensibilité : \(Int(sound.threshold))")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $sound.threshold, in: 5...60, step: 1)
+            }
+            .padding(.horizontal, 20)
+
+            Divider()
+
+            Text("Impulsions détectées : \(sound.onsets.count)")
+                .font(.subheadline.weight(.medium))
+
+            ScrollView {
+                LazyVStack(spacing: 6) {
+                    ForEach(sound.onsets) { o in
+                        HStack {
+                            Text(o.at, style: .time)
+                                .font(.caption.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Text(o.attribution)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(o.attribution.hasPrefix("moi")
+                                                 ? .teal : .orange)
+                            Spacer()
+                            Text("force \(Int(o.strength))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Color.gray.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+
+            Button("Effacer") { sound.reset() }
+                .font(.footnote)
+                .padding(.bottom, 16)
+        }
+        .padding(.top, 16)
+    }
+}
+
+// Dessine le spectrogramme à partir des trames reçues
+struct Spectrogram: View {
+    let frames: [[UInt8]]
+
+    var body: some View {
+        GeometryReader { geo in
+            Canvas { ctx, size in
+                guard !frames.isEmpty, let bands = frames.first?.count, bands > 0
+                else { return }
+                let cw = size.width / CGFloat(max(frames.count, 1))
+                let chh = size.height / CGFloat(bands)
+                for (t, frame) in frames.enumerated() {
+                    for (b, v) in frame.enumerated() {
+                        let level = Double(v) / 255.0
+                        guard level > 0.05 else { continue }
+                        let color = Color(hue: 0.75 - 0.55 * level,
+                                          saturation: 0.9,
+                                          brightness: min(1, 0.25 + level))
+                        let rect = CGRect(x: CGFloat(t) * cw,
+                                          y: size.height - CGFloat(b + 1) * chh,
+                                          width: max(cw, 1), height: chh + 0.5)
+                        ctx.fill(Path(rect), with: .color(color))
+                    }
+                }
+            }
+            .frame(width: geo.size.width, height: geo.size.height)
+        }
+    }
+}

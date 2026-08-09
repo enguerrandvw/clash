@@ -65,52 +65,35 @@ enum SoundMatcher {
         return (1 - r) / 2          // r = 1 → 0 ; r = -1 → 1
     }
 
-    /// Cherche la meilleure correspondance. `pool` limite aux cartes plausibles.
-    static func best(for frames: [[UInt8]],
-                     restrictedTo pool: Set<String>? = nil) -> Match? {
-        guard !frames.isEmpty, !SoundRefs.all.isEmpty else { return nil }
-
-        var bestRef: SoundRef?
-        var bestDist = Double.greatestFiniteMagnitude
-
-        for ref in SoundRefs.all {
-            if let pool, !pool.contains(ref.card) { continue }
-            // On teste aussi un décalage d'une trame : l'impulsion n'est pas
-            // forcément détectée exactement au même instant que dans la référence.
-            for shift in 0...1 {
-                let sliced = Array(frames.dropFirst(shift))
-                guard sliced.count >= 4 else { continue }
-                let d = distance(sliced, ref.frames)
-                if d < bestDist { bestDist = d; bestRef = ref }
-            }
+    /// Distance minimale entre une capture et une référence, en essayant
+    /// plusieurs décalages : l'impulsion n'est pas repérée exactement
+    /// au même instant que dans le fichier de référence.
+    private static func bestDistance(_ frames: [[UInt8]], _ ref: SoundRef) -> Double {
+        var best = Double.greatestFiniteMagnitude
+        for shift in 0...3 {
+            let sliced = Array(frames.dropFirst(shift))
+            guard sliced.count >= 4 else { continue }
+            best = min(best, distance(sliced, ref.frames))
         }
-
-        guard let bestRef else { return nil }
-        return Match(refCard: bestRef.card,
-                     card: cardByFolder[bestRef.card],
-                     score: max(0, 1 - bestDist * 2.0),
-                     file: bestRef.file)
+        return best
     }
 
-    /// Les `n` meilleurs candidats, pour voir si la bonne carte est au moins
-    /// dans le peloton de tête.
+    /// La meilleure correspondance.
+    static func best(for frames: [[UInt8]]) -> Match? {
+        top(1, for: frames).first
+    }
+
+    /// Les `n` meilleurs candidats, une seule entrée par carte.
     static func top(_ n: Int, for frames: [[UInt8]]) -> [Match] {
         guard !frames.isEmpty, !SoundRefs.all.isEmpty else { return [] }
 
         var scored: [(SoundRef, Double)] = []
         for ref in SoundRefs.all {
-            var best = Double.greatestFiniteMagnitude
-            for shift in 0...1 {
-                let sliced = Array(frames.dropFirst(shift))
-                guard sliced.count >= 4 else { continue }
-                best = min(best, distance(sliced, ref.frames))
-            }
-            if best < .greatestFiniteMagnitude { scored.append((ref, best)) }
+            let d = bestDistance(frames, ref)
+            if d < .greatestFiniteMagnitude { scored.append((ref, d)) }
         }
         scored.sort { $0.1 < $1.1 }
 
-        // Une seule entrée par carte : les variantes d'un même son
-        // ne doivent pas occuper tout le classement.
         var seen = Set<String>()
         var out: [Match] = []
         for (ref, d) in scored {
@@ -123,5 +106,28 @@ enum SoundMatcher {
             if out.count >= n { break }
         }
         return out
+    }
+
+    /// Vérifie que la comparaison fonctionne : on lui soumet une empreinte
+    /// de référence telle quelle. Elle DOIT se reconnaître elle-même.
+    /// Si l'auto-test échoue, le défaut est dans la comparaison ;
+    /// s'il réussit, il est dans la capture.
+    static func selfTest() -> String {
+        guard SoundRefs.all.count > 30 else { return "pas assez de références" }
+        let samples = [3, 17, 42, 88, 120]
+        var ok = 0
+        var detail = ""
+        for i in samples where i < SoundRefs.all.count {
+            let ref = SoundRefs.all[i]
+            let res = top(1, for: ref.frames)
+            let found = res.first?.refCard ?? "—"
+            let pct = Int((res.first?.score ?? 0) * 100)
+            if found == ref.card {
+                ok += 1
+            } else {
+                detail += "\n\(plainName(ref.card)) → \(plainName(found)) \(pct)%"
+            }
+        }
+        return "Auto-test : \(ok)/\(samples.count) réussis" + detail
     }
 }

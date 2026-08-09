@@ -21,5 +21,26 @@ targets:
         CURRENT_PROJECT_VERSION: "1"
         INFOPLIST_FILE: App/Info.plist
         GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: App/ClashElixir.entitlements
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+    dependencies:
+      - target: BroadcastExt
+        embed: true
+
+  BroadcastExt:
+    type: app-extension
+    platform: iOS
+    sources:
+      - path: Broadcast
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.monprojet.clashelixir.broadcast
+        PRODUCT_NAME: BroadcastExt
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        INFOPLIST_FILE: Broadcast/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_ENTITLEMENTS: Broadcast/Broadcast.entitlements
         SWIFT_VERSION: "5.0"
         TARGETED_DEVICE_FAMILY: "1"

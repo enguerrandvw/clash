@@ -30,6 +30,12 @@ struct DiagnosticView: View {
                       bridge.frames > 0 ? .green : .red)
                 ligne("Tampons audio", "\(bridge.audioBuffers)",
                       bridge.audioBuffers > 0 ? .green : .red)
+                ligne("Format image", bridge.pixelFormat, .secondary)
+                ligne("Format audio", bridge.audioFormat, .secondary)
+                ligne("Mémoire extension",
+                      String(format: "%.1f Mo / 50", bridge.memoryMB),
+                      bridge.memoryMB > 40 ? .red
+                        : (bridge.memoryMB > 25 ? .orange : .green))
 
                 // 3. Niveau sonore : LE test décisif
                 VStack(alignment: .leading, spacing: 6) {

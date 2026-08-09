@@ -32,21 +32,37 @@ enum SoundMatcher {
         return map
     }()
 
-    /// Distance entre deux séquences de trames. Plus c'est bas, plus ça se ressemble.
+    /// Corrélation entre deux séquences. Elle juge la FORME du spectre
+    /// et non les valeurs absolues : deux sons identiques joués à des
+    /// volumes différents restent parfaitement corrélés.
+    /// Retourne une distance : 0 = identique, 1 = sans rapport.
     private static func distance(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         let n = min(a.count, b.count)
         guard n > 0 else { return 1 }
-        var total = 0.0, count = 0
+
+        var xs: [Double] = [], ys: [Double] = []
         for i in 0..<n {
             let ra = a[i], rb = b[i]
             let m = min(ra.count, rb.count)
             for j in 0..<m {
-                total += abs(Double(ra[j]) - Double(rb[j]))
-                count += 1
+                xs.append(Double(ra[j]))
+                ys.append(Double(rb[j]))
             }
         }
-        guard count > 0 else { return 1 }
-        return total / Double(count) / 255.0
+        guard xs.count >= 16 else { return 1 }
+
+        let mx = xs.reduce(0, +) / Double(xs.count)
+        let my = ys.reduce(0, +) / Double(ys.count)
+        var num = 0.0, dx = 0.0, dy = 0.0
+        for k in 0..<xs.count {
+            let a0 = xs[k] - mx, b0 = ys[k] - my
+            num += a0 * b0
+            dx += a0 * a0
+            dy += b0 * b0
+        }
+        guard dx > 1e-6, dy > 1e-6 else { return 1 }
+        let r = num / (dx.squareRoot() * dy.squareRoot())
+        return (1 - r) / 2          // r = 1 → 0 ; r = -1 → 1
     }
 
     /// Cherche la meilleure correspondance. `pool` limite aux cartes plausibles.
@@ -72,7 +88,40 @@ enum SoundMatcher {
         guard let bestRef else { return nil }
         return Match(refCard: bestRef.card,
                      card: cardByFolder[bestRef.card],
-                     score: max(0, 1 - bestDist * 2.2),
+                     score: max(0, 1 - bestDist * 2.0),
                      file: bestRef.file)
+    }
+
+    /// Les `n` meilleurs candidats, pour voir si la bonne carte est au moins
+    /// dans le peloton de tête.
+    static func top(_ n: Int, for frames: [[UInt8]]) -> [Match] {
+        guard !frames.isEmpty, !SoundRefs.all.isEmpty else { return [] }
+
+        var scored: [(SoundRef, Double)] = []
+        for ref in SoundRefs.all {
+            var best = Double.greatestFiniteMagnitude
+            for shift in 0...1 {
+                let sliced = Array(frames.dropFirst(shift))
+                guard sliced.count >= 4 else { continue }
+                best = min(best, distance(sliced, ref.frames))
+            }
+            if best < .greatestFiniteMagnitude { scored.append((ref, best)) }
+        }
+        scored.sort { $0.1 < $1.1 }
+
+        // Une seule entrée par carte : les variantes d'un même son
+        // ne doivent pas occuper tout le classement.
+        var seen = Set<String>()
+        var out: [Match] = []
+        for (ref, d) in scored {
+            if seen.contains(ref.card) { continue }
+            seen.insert(ref.card)
+            out.append(Match(refCard: ref.card,
+                             card: cardByFolder[ref.card],
+                             score: max(0, 1 - d * 2.0),
+                             file: ref.file))
+            if out.count >= n { break }
+        }
+        return out
     }
 }

@@ -11,7 +11,7 @@ final class SoundAnalyzer: ObservableObject {
         let id = UUID()
         let at: Date
         let strength: Double
-        var signature: [UInt8]   // spectre au moment de l'impulsion
+        let signature: [UInt8]   // spectre au moment de l'impulsion
         var myElixirBefore: Int
         var myElixirAfter: Int
         var attribution: String  // "moi", "adverse", ou "?"
@@ -31,6 +31,8 @@ final class SoundAnalyzer: ObservableObject {
     private var pendingOnset: Onset?
     private var levelHistory: [Double] = []
     private var pendingIndex: Int?
+    private var capturing = false
+    private var capture: [[UInt8]] = []     // trames suivant l'impulsion
 
     /// Ajoute les trames reçues et cherche les impulsions.
     func ingest(_ data: [UInt8], levels: [UInt8], bands: Int, myElixir: Int) {
@@ -44,7 +46,11 @@ final class SoundAnalyzer: ObservableObject {
             let lvl = i < levels.count ? Double(levels[i]) : 0
             levelHistory.append(lvl)
             if levelHistory.count > maxFrames { levelHistory.removeFirst() }
+
             detect(level: lvl, myElixir: myElixir)
+
+            // Une impulsion vient d'être repérée : on met de côté ses trames
+            if capturing && capture.count < 8 { capture.append(frame) }
         }
         if frames.count > maxFrames {
             frames.removeFirst(frames.count - maxFrames)
@@ -52,22 +58,21 @@ final class SoundAnalyzer: ObservableObject {
 
         // Une impulsion en attente : on regarde si l'élixir a chuté depuis
         if var p = pendingOnset, Date().timeIntervalSince(p.at) > 0.6,
-           let idx = pendingIndex {
+           pendingIndex != nil {
 
             p.myElixirAfter = myElixir
             let drop = p.myElixirBefore - p.myElixirAfter
 
-            // Les 8 trames suivant l'impulsion forment sa signature
-            let end = min(frames.count, idx + 8)
-            if idx < end {
-                let seq = Array(frames[idx..<end])
-                p.signature = seq.first ?? []
-                p.match = SoundMatcher.best(for: seq)
+            // Les trames collectées après l'impulsion forment sa signature
+            if capture.count >= 4 {
+                p.signature = capture.first ?? []
+                p.match = SoundMatcher.best(for: capture)
             }
+            capturing = false
 
             let name = p.match?.card?.name
                 ?? p.match.map { SoundMatcher.plainName($0.refCard) }
-                ?? "inconnu"
+                ?? "inconnu (\(capture.count) trames)"
             let pct = Int((p.match?.score ?? 0) * 100)
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"
@@ -98,7 +103,9 @@ final class SoundAnalyzer: ObservableObject {
         onPulse?("…")
         // On note l'indice de départ : la reconnaissance a besoin des
         // 8 trames qui SUIVENT l'impulsion, pas encore reçues.
-        pendingIndex = frames.count - 1
+        capturing = true
+        capture.removeAll(keepingCapacity: true)
+        pendingIndex = 0
         pendingOnset = Onset(at: now, strength: jump, signature: [],
                              myElixirBefore: myElixir, myElixirAfter: myElixir,
                              attribution: "…", match: nil)
@@ -110,5 +117,7 @@ final class SoundAnalyzer: ObservableObject {
         pendingOnset = nil
         pendingIndex = nil
         levelHistory.removeAll()
+        capturing = false
+        capture.removeAll()
     }
 }

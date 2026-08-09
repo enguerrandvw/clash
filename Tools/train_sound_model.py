@@ -139,7 +139,7 @@ def spectro(samples):
 def main():
     root, out_path = sys.argv[1], sys.argv[2]
 
-    deploys, noises = {}, []
+    deploys, noises, chimes = {}, [], []
     for dirpath, _, files in os.walk(root):
         folder = os.path.basename(dirpath)
         for f in files:
@@ -152,6 +152,11 @@ def main():
                 if key:
                     deploys.setdefault(key, []).append(path)
             else:
+                low = (folder + "/" + f).lower()
+                if any(k in low for k in ("elixir", "chime", "place", "drop",
+                                           "card", "ui_", "click", "tap")) \
+                   and not is_card:
+                    chimes.append(path)
                 # Tout le reste sert de bruit : musique, ambiance, attaques,
                 # interface. C'est ce qui apprendra au réseau à ignorer
                 # les pas d'un géant ou un tir de tour.
@@ -165,6 +170,7 @@ def main():
     if manquantes:
         print("Introuvables :", manquantes)
     print(f"{len(noises)} fichiers utilisables comme bruit")
+    print(f"{len(chimes)} candidats « tintement d'élixir »")
 
     if len(classes) < 4:
         print("Pas assez de classes, abandon.")
@@ -187,6 +193,13 @@ def main():
         if a is not None and len(a) > RATE // 2:
             noise_pool.append(a)
     print(f"{len(noise_pool)} extraits de bruit chargés")
+
+    chime_pool = []
+    for p in chimes[:40]:
+        a = load(p, 1)
+        if a is not None and len(a) > 512:
+            chime_pool.append(a)
+    print(f"{len(chime_pool)} tintements chargés")
 
     need = FFT + HOP * (WINDOW_FRAMES - 1)
 
@@ -213,12 +226,21 @@ def main():
             else:
                 snd = clean[c][rng.integers(len(clean[c]))]
                 snd = snd * rng.uniform(0.3, 1.0)
-                # Décalage : le son arrive après le tintement d'élixir
-                off = int(rng.integers(0, HOP * 8))
                 buf = np.zeros(need, dtype=np.float32)
+
+                # Le tintement d'élixir précède TOUJOURS le son de la troupe
+                # en jeu réel : on le simule dans la plupart des exemples.
+                if chime_pool and rng.random() < 0.75:
+                    ch = chime_pool[rng.integers(len(chime_pool))]
+                    ch = ch * rng.uniform(0.4, 1.2)
+                    e = min(need, len(ch))
+                    buf[:e] += ch[:e]
+
+                # La troupe démarre entre 0 et 0,15 s après
+                off = int(rng.integers(0, HOP * 13))
                 end = min(need, off + len(snd))
                 if end > off:
-                    buf[off:end] = snd[:end - off]
+                    buf[off:end] += snd[:end - off]
                 mix = buf + bg
             mix = np.clip(mix, -1, 1)
             X.append(spectro(mix))

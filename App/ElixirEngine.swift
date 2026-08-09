@@ -17,6 +17,7 @@ final class ElixirEngine: ObservableObject {
     private var matchStart = Date()
 
     let overlay = PiPOverlay()
+    let capture = CaptureBridge.shared
     let voice = VoiceRecognizer()
 
     private let baseSeconds: Double = 2.8
@@ -25,6 +26,7 @@ final class ElixirEngine: ObservableObject {
     private var secondsPerElixir: Double { baseSeconds / Double(rate) }
 
     init() {
+        capture.startListening()
         setElixir(5)
         pushToOverlay()
         // Une carte annoncée = son coût déduit de l'élixir adverse
@@ -128,5 +130,6 @@ final class ElixirEngine: ObservableObject {
     private func pushToOverlay() {
         overlay.elixir = elixir
         overlay.rate = rate
+        overlay.myElixir = capture.myElixir
     }
 }

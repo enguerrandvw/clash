@@ -27,7 +27,8 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var fftSetup: FFTSetup?
     private var window = [Float]()
     private var pending = [Float]()      // échantillons en attente
-    private var frames: [UInt8] = []     // spectres accumulés depuis le dernier envoi
+    private var frames: [UInt8] = []     // formes spectrales normalisées
+    private var levels: [UInt8] = []     // niveau absolu de chaque trame
     private var channels = 1
     private var bestRowFrac: Double = 0
     private var pixelFormat = ""
@@ -292,6 +293,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
             // 16 bandes logarithmiques entre 200 Hz et 11 kHz
             let binHz = 44100.0 / Double(fftSize)
+            var dbs = [Float](repeating: -120, count: bandCount)
             for b in 0..<bandCount {
                 let f0 = 200.0 * pow(11000.0 / 200.0, Double(b) / Double(bandCount))
                 let f1 = 200.0 * pow(11000.0 / 200.0, Double(b + 1) / Double(bandCount))
@@ -300,14 +302,24 @@ class SampleHandler: RPBroadcastSampleHandler {
                 var sum: Float = 0
                 for i in i0..<i1 { sum += mags[i] }
                 let avg = sum / Float(max(1, i1 - i0))
-                // Échelle logarithmique, -80 dB à 0 dB ramenés sur 0-255
-                let db = 20 * log10(max(avg, 1e-6))
-                let v = max(0, min(255, Int((db + 80) / 80 * 255)))
+                dbs[b] = 20 * log10(max(avg, 1e-6))
+            }
+
+            // Niveau absolu : sert à repérer les impulsions
+            let peakDb = dbs.max() ?? -120
+            levels.append(UInt8(max(0, min(255, Int((peakDb + 60) / 100 * 255)))))
+
+            // Forme normalisée : la bande dominante vaut 255, 48 dB plus bas vaut 0.
+            // Indépendant du volume : c'est ce qui identifie le son.
+            for b in 0..<bandCount {
+                let rel = dbs[b] - peakDb
+                let v = max(0, min(255, Int((rel + 48) / 48 * 255)))
                 frames.append(UInt8(v))
             }
             // Sécurité : on ne laisse pas la file grossir sans fin
             if frames.count > bandCount * 40 {
                 frames.removeFirst(frames.count - bandCount * 40)
+                if levels.count > 40 { levels.removeFirst(levels.count - 40) }
             }
         }
         if pending.count > fftSize * 4 { pending.removeFirst(pending.count - fftSize * 2) }
@@ -348,6 +360,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             "rowProfile": rowProfile,
             "digit": digitB64,
             "spec": Data(frames).base64EncodedString(),
+            "lev": Data(levels).base64EncodedString(),
             "bands": bandCount,
             "bestRowFrac": bestRowFrac,
             "pixelFormat": pixelFormat,
@@ -357,6 +370,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         ]
         audioPeak = 0
         frames.removeAll(keepingCapacity: true)
+        levels.removeAll(keepingCapacity: true)
         guard let d = try? JSONSerialization.data(withJSONObject: state) else { return }
         conn?.send(content: d, completion: .idempotent)
     }

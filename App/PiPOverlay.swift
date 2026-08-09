@@ -13,6 +13,7 @@ final class PiPOverlay: NSObject, ObservableObject {
     var elixir: Double = 5
     var rate: Int = 1
     var hand: [String] = []
+    var myElixir: Int = -1      // ton élixir, mesuré à l'écran
 
     let displayLayer = AVSampleBufferDisplayLayer()
     private var controller: AVPictureInPictureController?
@@ -123,7 +124,8 @@ final class PiPOverlay: NSObject, ObservableObject {
                    | CGBitmapInfo.byteOrder32Little.rawValue) {
             ctx.translateBy(x: 0, y: CGFloat(OverlayRenderer.height))
             ctx.scaleBy(x: 1, y: -1)
-            OverlayRenderer.draw(into: ctx, elixir: elixir, rate: rate, hand: hand)
+            OverlayRenderer.draw(into: ctx, elixir: elixir, rate: rate,
+                                 hand: hand, myElixir: myElixir)
         }
         CVPixelBufferUnlockBaseAddress(buffer, [])
 

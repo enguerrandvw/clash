@@ -15,8 +15,7 @@ final class SoundAnalyzer: ObservableObject {
         var myElixirBefore: Int
         var myElixirAfter: Int
         var attribution: String  // "moi", "adverse", ou "?"
-        var match: SoundMatcher.Match?
-        var top: [SoundMatcher.Match] = []
+        var result: SoundClassifier.Result?
     }
 
     @Published var frames: [[UInt8]] = []      // spectres récents
@@ -68,29 +67,17 @@ final class SoundAnalyzer: ObservableObject {
 
             // Les trames collectées après l'impulsion forment sa signature
             if capture.count >= 12 {
-                // On isole ce que le son a AJOUTÉ au fond sonore ambiant,
-                // puis on renormalise : c'est comparable à un son propre.
-                let delta: [[UInt8]] = capture.map { frame in
-                    guard background.count == frame.count else { return frame }
-                    let diff = (0..<frame.count).map {
-                        max(0.0, Double(frame[$0]) - background[$0])
-                    }
-                    let peak = diff.max() ?? 0
-                    guard peak > 4 else { return frame }
-                    return diff.map { UInt8(min(255, $0 / peak * 255)) }
-                }
-                p.signature = delta.first ?? []
-                p.top = SoundMatcher.top(3, for: delta)
-                p.match = p.top.first
+                p.signature = capture.first ?? []
+                p.result = SoundClassifier.classify(capture)
             }
             capturing = false
 
-            let sure = (p.match?.score ?? 0) >= minScore
-            let name = !sure ? "?"
-                : (p.match?.card?.name
-                   ?? p.match.map { SoundMatcher.plainName($0.refCard) }
-                   ?? "?")
-            let pct = Int((p.match?.score ?? 0) * 100)
+            let r = p.result
+            let sure = (r?.confidence ?? 0) >= minScore && !(r?.isBackground ?? true)
+            let name = sure
+                ? (r?.card?.name ?? (r?.label ?? "?").replacingOccurrences(of: "_", with: " "))
+                : ((r?.isBackground ?? false) ? "bruit" : "?")
+            let pct = Int((r?.confidence ?? 0) * 100)
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"
 

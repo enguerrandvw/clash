@@ -43,13 +43,15 @@ struct SoundView: View {
 
             Divider()
 
-            Text(SoundMatcher.selfTest())
+            Text(SoundClassifier.isReady
+                 ? "Modèle : \(SoundModel.labels.count - 1) cartes · précision \(Int(SoundModel.accuracy * 100)) %"
+                 : "Modèle absent")
                 .font(.caption2)
                 .foregroundStyle(.yellow)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 20)
 
-            Text("\(SoundRefs.all.count) sons de référence · \(SoundMatcher.cardByFolder.count) reliés à une carte")
+            Text(SoundModel.labels.dropLast().joined(separator: ", "))
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
 
@@ -71,15 +73,6 @@ struct SoundView: View {
                             Spacer()
                             Text("force \(Int(o.strength))")
                                 .font(.caption).foregroundStyle(.secondary)
-                        }
-                        // Les deux candidats suivants : la bonne carte
-                        // est-elle au moins dans le peloton de tête ?
-                        if o.top.count > 1 {
-                            Text(o.top.dropFirst().map {
-                                "\($0.card?.name ?? SoundMatcher.plainName($0.refCard)) \(Int($0.score * 100))%"
-                            }.joined(separator: "  ·  "))
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
                         }
                         }
                         .padding(.horizontal, 14).padding(.vertical, 7)

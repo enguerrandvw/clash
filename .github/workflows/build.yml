@@ -25,14 +25,14 @@ jobs:
             https://github.com/Benantana/Clash-Royale-Sound-Effects.git /tmp/sfx
           echo "Taille :"; du -sh /tmp/sfx
 
-      - name: Calculer les empreintes sonores
+      - name: Installer numpy
+        run: pip3 install --quiet --break-system-packages numpy || pip3 install --quiet numpy
+
+      - name: Entraîner le classificateur de sons
         run: |
-          pip3 install --quiet --break-system-packages numpy || pip3 install --quiet numpy
-          python3 Tools/make_fingerprints.py /tmp/sfx App/SoundFingerprints.swift
-          echo "--- Aperçu du fichier généré ---"
-          head -c 600 App/SoundFingerprints.swift
-          echo
-          grep -c "SoundRef(card:" App/SoundFingerprints.swift
+          python3 Tools/train_sound_model.py /tmp/sfx App/SoundModel.swift
+          echo "--- taille du modèle ---"
+          wc -c App/SoundModel.swift
 
       - name: Générer le projet Xcode
         run: xcodegen generate

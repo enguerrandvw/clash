@@ -96,7 +96,9 @@ final class CaptureBridge: ObservableObject {
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
                     if let spec = j["spec"] as? String, !spec.isEmpty,
                        let raw = Data(base64Encoded: spec) {
+                        let lev = (j["lev"] as? String).flatMap { Data(base64Encoded: $0) }
                         SoundAnalyzer.shared.ingest([UInt8](raw),
+                                                    levels: [UInt8](lev ?? Data()),
                                                     bands: j["bands"] as? Int ?? 16,
                                                     myElixir: self.myElixir)
                     }

@@ -27,6 +27,12 @@ final class ElixirEngine: ObservableObject {
 
     init() {
         capture.startListening()
+        SoundAnalyzer.shared.onPulse = { [weak self] tag in
+            Task { @MainActor in
+                self?.overlay.lastTag = tag
+                self?.overlay.flashUntil = Date().addingTimeInterval(0.8)
+            }
+        }
         setElixir(5)
         pushToOverlay()
         // Une carte annoncée = son coût déduit de l'élixir adverse

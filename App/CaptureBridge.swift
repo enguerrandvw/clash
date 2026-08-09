@@ -66,7 +66,9 @@ final class CaptureBridge: ObservableObject {
         frames = 0; audioBuffers = 0; audioPeak = 0; band = []; note = "—"
     }
 
-    private func receive(on c: NWConnection) {
+    // nonisolated : les rappels réseau n'arrivent pas sur le fil principal.
+    // Les mises à jour d'interface repassent explicitement par @MainActor.
+    private nonisolated func receive(on c: NWConnection) {
         c.receiveMessage { [weak self] data, _, _, _ in
             if let data,
                let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {

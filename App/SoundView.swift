@@ -34,6 +34,13 @@ struct SoundView: View {
             }
             .padding(.horizontal, 20)
 
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Seuil de certitude : \(Int(sound.minScore * 100)) %")
+                    .font(.caption).foregroundStyle(.secondary)
+                Slider(value: $sound.minScore, in: 0.2...0.9, step: 0.05)
+            }
+            .padding(.horizontal, 20)
+
             Divider()
 
             Text(SoundMatcher.selfTest())

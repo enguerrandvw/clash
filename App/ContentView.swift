@@ -4,6 +4,7 @@ import AVKit
 struct ContentView: View {
     @EnvironmentObject var engine: ElixirEngine
     @State private var showDiag = false
+    @State private var showSound = false
 
     private let costs = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -68,12 +69,24 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 24)
 
+                Button {
+                    showSound = true
+                } label: {
+                    Label("Analyse sonore", systemImage: "waveform")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Color.pink.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 24)
+
                 OverlayStatus(overlay: engine.overlay, engineStatus: engine.status)
                     .padding(.bottom, 30)
             }
             .padding(.vertical, 16)
         }
         .sheet(isPresented: $showDiag) { DiagnosticView() }
+        .sheet(isPresented: $showSound) { SoundView() }
     }
 }
 

@@ -40,7 +40,29 @@ META = [
     "ice_spirit", "skeleton", "bat", "firecracker", "dart_goblin",
 ]
 
-DEPLOY_RE = re.compile(r"(^|[_\-\s])(dep|deploy|spawn|summon)", re.I)
+DEPLOY_RE = re.compile(r"(^|[_\-\s])(dep|deploy|spawn|summon|cast|throw)", re.I)
+
+
+def strip_prefix(folder):
+    for p in ("card_champion_", "card_legendary_", "card_epic_",
+              "card_rare_", "card_common_", "card_"):
+        if folder.startswith(p):
+            return folder[len(p):]
+    return folder
+
+
+def match_meta(folder):
+    """Retrouve la carte visée malgré les pluriels et variantes de nommage."""
+    plain = strip_prefix(folder)
+    flat = plain.replace("_", "")
+    for m in META:
+        mf = m.replace("_", "")
+        if flat == mf or flat == mf + "s" or flat + "s" == mf:
+            return m
+        # Le dossier peut porter un nom plus long : "pekka_mini", "log_the"
+        if mf in flat and abs(len(flat) - len(mf)) <= 3:
+            return m
+    return None
 AUDIO_EXT = (".wav", ".ogg", ".mp3", ".m4a", ".caf")
 
 WIN = np.hanning(FFT).astype(np.float32)
@@ -126,7 +148,7 @@ def main():
             path = os.path.join(dirpath, f)
             is_card = folder.startswith("card_")
             if is_card and DEPLOY_RE.search(os.path.splitext(f)[0]):
-                key = next((m for m in META if folder.endswith(m)), None)
+                key = match_meta(folder)
                 if key:
                     deploys.setdefault(key, []).append(path)
             else:

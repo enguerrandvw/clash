@@ -12,10 +12,14 @@ struct DiagnosticView: View {
                 Text("Diagnostic de capture")
                     .font(.headline)
 
-                // 1. App Group
-                ligne("Espace partagé",
-                      bridge.groupOK ? "OK" : "INDISPONIBLE",
-                      bridge.groupOK ? .green : .red)
+                // 1. Canal de communication
+                ligne("Socket locale",
+                      bridge.listening ? "à l'écoute" : "inactive",
+                      bridge.listening ? .green : .red)
+
+                Text("Extension attendue : \(CaptureBridge.extensionID)")
+                    .font(.caption2).foregroundStyle(.secondary)
+                    .padding(.horizontal, 20)
 
                 // 2. Fraîcheur des données
                 ligne("Flux", bridge.freshness,
@@ -46,27 +50,27 @@ struct DiagnosticView: View {
                 }
                 .padding(.horizontal, 20)
 
-                // 4. Ce que voit l'extension
-                if let img = bridge.screenshot {
-                    VStack(spacing: 4) {
-                        Text("Écran capturé").font(.caption).foregroundStyle(.secondary)
-                        Image(uiImage: img)
-                            .resizable().scaledToFit()
-                            .frame(maxHeight: 260)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                // 4. Échantillons de la bande basse
+                if !bridge.band.isEmpty {
+                    VStack(spacing: 6) {
+                        Text("Barre d'élixir — 10 points échantillonnés")
+                            .font(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 3) {
+                            ForEach(Array(bridge.band.enumerated()), id: \.offset) { _, v in
+                                RoundedRectangle(cornerRadius: 3)
+                                    .fill(v > 40 ? Color.purple : Color.gray.opacity(0.25))
+                                    .frame(height: 34)
+                                    .overlay(Text("\(v)").font(.system(size: 9))
+                                                .foregroundStyle(.white))
+                            }
+                        }
+                        .padding(.horizontal, 20)
                     }
                 }
 
-                if let b = bridge.band {
-                    VStack(spacing: 4) {
-                        Text("Bande basse — ta barre d'élixir doit être visible ici")
-                            .font(.caption).foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                        Image(uiImage: b)
-                            .resizable().scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
-                    }
-                    .padding(.horizontal, 12)
+                if let e = bridge.lastError {
+                    Text(e).font(.caption).foregroundStyle(.red)
+                        .padding(.horizontal, 20)
                 }
 
                 // Commandes
@@ -92,8 +96,8 @@ struct DiagnosticView: View {
             }
             .padding(.top, 16)
         }
-        .onAppear { bridge.startWatching() }
-        .onDisappear { bridge.stopWatching() }
+        .onAppear { bridge.startListening() }
+        .onDisappear { bridge.stopListening() }
     }
 
     private func ligne(_ titre: String, _ valeur: String, _ couleur: Color) -> some View {

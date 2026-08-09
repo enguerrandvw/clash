@@ -36,6 +36,12 @@ struct SoundView: View {
 
             Divider()
 
+            Text(SoundMatcher.selfTest())
+                .font(.caption2)
+                .foregroundStyle(.yellow)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 20)
+
             Text("\(SoundRefs.all.count) sons de référence · \(SoundMatcher.cardByFolder.count) reliés à une carte")
                 .font(.caption).foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)

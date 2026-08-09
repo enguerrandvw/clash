@@ -11,6 +11,9 @@ final class CaptureBridge: ObservableObject {
     @Published var audioBuffers = 0
     @Published var audioPeak: Float = 0
     @Published var band: [Int] = []
+    @Published var pixelFormat = "?"
+    @Published var audioFormat = "?"
+    @Published var memoryMB: Double = 0
     @Published var freshness = "aucune donnée"
     @Published var listening = false
     @Published var lastError: String?
@@ -79,6 +82,9 @@ final class CaptureBridge: ObservableObject {
                     self.audioBuffers = j["audioBuffers"] as? Int ?? 0
                     self.audioPeak    = j["audioPeak"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
+                    self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
+                    self.audioFormat  = j["audioFormat"] as? String ?? "?"
+                    self.memoryMB     = j["memoryMB"] as? Double ?? 0
                     self.lastPacket   = Date()
                 }
             }

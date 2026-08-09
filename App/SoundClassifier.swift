@@ -9,6 +9,7 @@ enum SoundClassifier {
         let card: Card?
         let confidence: Double  // 0 à 1
         let isBackground: Bool
+        let runnersUp: String     // les deux hypothèses suivantes
     }
 
     static var isReady: Bool { !SoundModel.labels.isEmpty && SoundModel.w1.count > 0 }
@@ -75,13 +76,18 @@ enum SoundClassifier {
         let sum = exps.reduce(0, +)
         if sum > 0 { for i in 0..<n { exps[i] /= sum } }
 
-        var best = 0
-        for i in 1..<n where exps[i] > exps[best] { best = i }
+        let order = (0..<n).sorted { exps[$0] > exps[$1] }
+        let best = order[0]
         let label = SoundModel.labels[best]
+
+        let others = order.dropFirst().prefix(2).map {
+            "\(SoundModel.labels[$0].replacingOccurrences(of: "_", with: " ")) \(Int(exps[$0] * 100))%"
+        }.joined(separator: " · ")
 
         return Result(label: label,
                       card: cardByLabel[label],
                       confidence: Double(exps[best]),
-                      isBackground: label == "__fond__")
+                      isBackground: label == "__fond__",
+                      runnersUp: others)
     }
 }

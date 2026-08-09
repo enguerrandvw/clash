@@ -10,6 +10,7 @@ final class CaptureBridge: ObservableObject {
     @Published var frames = 0
     @Published var audioBuffers = 0
     @Published var audioPeak: Float = 0
+    @Published var audioPeakMax: Float = 0
     @Published var band: [Int] = []
     @Published var pixelFormat = "?"
     @Published var audioFormat = "?"
@@ -81,6 +82,7 @@ final class CaptureBridge: ObservableObject {
                     self.frames       = j["frames"] as? Int ?? 0
                     self.audioBuffers = j["audioBuffers"] as? Int ?? 0
                     self.audioPeak    = j["audioPeak"] as? Float ?? 0
+                    self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
                     self.audioFormat  = j["audioFormat"] as? String ?? "?"

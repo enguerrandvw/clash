@@ -12,17 +12,38 @@ enum OverlayRenderer {
     private static let purpleDim  = UIColor(red: 0.26, green: 0.14, blue: 0.38, alpha: 1)
 
     static func draw(into ctx: CGContext, elixir: Double, rate: Int,
-                     hand: [String], myElixir: Int = -1) {
+                     hand: [String], myElixir: Int = -1,
+                     flash: Bool = false, tag: String = "") {
 
         let w = CGFloat(width), h = CGFloat(height)
 
         ctx.setFillColor(UIColor.black.cgColor)
         ctx.fill(CGRect(x: 0, y: 0, width: w, height: h))
 
+        // Bordure lumineuse : un son de déploiement vient d'être détecté
+        if flash {
+            let col = tag.hasPrefix("moi") ? UIColor.systemTeal : UIColor.systemOrange
+            ctx.setStrokeColor(col.cgColor)
+            ctx.setLineWidth(10)
+            ctx.stroke(CGRect(x: 5, y: 5, width: w - 10, height: h - 10))
+        }
+
         UIGraphicsPushContext(ctx)
         defer { UIGraphicsPopContext() }
 
         let pad: CGFloat = 22
+
+        // ---- Dernière impulsion détectée ----
+        if !tag.isEmpty {
+            let tFont = UIFont.systemFont(ofSize: 17, weight: .semibold)
+            let col: UIColor = tag.hasPrefix("moi") ? .systemTeal : .systemOrange
+            let tAttr: [NSAttributedString.Key: Any] = [
+                .font: tFont, .foregroundColor: col.withAlphaComponent(flash ? 1 : 0.55)
+            ]
+            let tSize = (tag as NSString).size(withAttributes: tAttr)
+            (tag as NSString).draw(at: CGPoint(x: (w - tSize.width) / 2, y: h - tSize.height - 6),
+                                   withAttributes: tAttr)
+        }
 
         // ---- Chiffre, aligné à gauche ----
         let value = String(format: "%.1f", elixir)

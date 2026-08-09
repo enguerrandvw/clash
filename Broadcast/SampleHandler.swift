@@ -90,14 +90,6 @@ class SampleHandler: RPBroadcastSampleHandler {
                 out.append(max(0, (r + b) / 2 - g))
             }
         } else if CVPixelBufferIsPlanar(pb) {
-            // YUV : on lit la luminance du plan 0
-            guard let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return }
-            let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
-            let ph = CVPixelBufferGetHeightOfPlane(pb, 0)
-            let pw = CVPixelBufferGetWidthOfPlane(pb, 0)
-            guard bpr > 0, ph > 0, pw > 0 else { return }
-            _ = (base, bpr, ph, pw, total)
-
             // Plan 1 : chroma Cb/Cr entrelacée, demi-résolution.
             // L'écart à 128 mesure la saturation : élevé pour le violet,
             // proche de zéro pour le blanc, le gris et le noir.

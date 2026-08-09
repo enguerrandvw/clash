@@ -75,6 +75,24 @@ struct DiagnosticView: View {
                     }
                 }
 
+                if !bridge.rowProfile.isEmpty {
+                    VStack(spacing: 4) {
+                        Text(String(format: "Profil vertical — ligne la plus colorée à %.0f %% de la hauteur",
+                                    bridge.bestRowFrac * 100))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        HStack(alignment: .bottom, spacing: 2) {
+                            ForEach(Array(bridge.rowProfile.enumerated()), id: \.offset) { _, v in
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(v > 25 ? Color.purple : Color.gray.opacity(0.3))
+                                    .frame(height: max(3, CGFloat(min(v, 90))))
+                            }
+                        }
+                        .frame(height: 90, alignment: .bottom)
+                        .padding(.horizontal, 20)
+                    }
+                }
+
                 if let e = bridge.lastError {
                     Text(e).font(.caption).foregroundStyle(.red)
                         .padding(.horizontal, 20)

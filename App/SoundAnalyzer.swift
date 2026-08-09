@@ -11,7 +11,7 @@ final class SoundAnalyzer: ObservableObject {
         let id = UUID()
         let at: Date
         let strength: Double
-        let signature: [UInt8]   // spectre au moment de l'impulsion
+        var signature: [UInt8]   // spectre au moment de l'impulsion
         var myElixirBefore: Int
         var myElixirAfter: Int
         var attribution: String  // "moi", "adverse", ou "?"

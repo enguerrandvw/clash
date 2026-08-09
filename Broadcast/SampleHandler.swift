@@ -1,94 +1,100 @@
 import ReplayKit
 import CoreImage
 import AVFoundation
+import Network
 
-// Extension de capture. Contrainte iOS : 50 Mo de RAM maximum.
-// Elle ne fait donc AUCUNE analyse : elle mesure, réduit, et transmet.
+// Extension de capture. Limite iOS : 50 Mo de RAM.
+// Communication avec l'app par socket locale (127.0.0.1) : aucune autorisation
+// Apple requise, contrairement aux App Groups.
 class SampleHandler: RPBroadcastSampleHandler {
 
-    private let group = "group.com.monprojet.clashelixir"
-    private lazy var shared: URL? = FileManager.default
-        .containerURL(forSecurityApplicationGroupIdentifier: group)
-
-    // Un seul contexte réutilisé : en créer un par image ferait exploser la mémoire
-    private let ciContext = CIContext(options: [.cacheIntermediates: false])
+    private var conn: NWConnection?
+    private let port: NWEndpoint.Port = 45678
 
     private var frameCount = 0
     private var audioCount = 0
     private var audioPeak: Float = 0
-    private var lastWrite = Date.distantPast
+    private var lastSend = Date.distantPast
     private var startedAt = Date()
+
+    // Échantillons de la bande basse : serviront à lire ta barre d'élixir
+    private var bandSamples: [Int] = []
+
+    private let ciContext = CIContext(options: [.cacheIntermediates: false])
 
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         startedAt = Date()
-        writeState(note: "démarré")
+        openSocket()
+        send(note: "démarré")
     }
 
     override func broadcastFinished() {
-        writeState(note: "terminé")
+        send(note: "terminé")
+        conn?.cancel()
+        conn = nil
+    }
+
+    private func openSocket() {
+        let c = NWConnection(host: "127.0.0.1", port: port, using: .udp)
+        c.start(queue: .global(qos: .userInitiated))
+        conn = c
     }
 
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer,
                                       with sampleBufferType: RPSampleBufferType) {
         switch sampleBufferType {
-
         case .video:
             frameCount += 1
-            // 1 image sur 6 environ : suffisant pour le diagnostic, léger en mémoire
-            if frameCount % 6 == 0 { handleVideo(sampleBuffer) }
-
+            if frameCount % 6 == 0 { sampleBand(sampleBuffer) }
         case .audioApp:
             audioCount += 1
             audioPeak = max(audioPeak, peakLevel(sampleBuffer))
-
         case .audioMic:
-            break   // on ignore le micro ici
-
+            break
         @unknown default:
             break
         }
 
-        // Écriture de l'état 4 fois par seconde
-        if Date().timeIntervalSince(lastWrite) > 0.25 {
-            lastWrite = Date()
-            writeState(note: "en cours")
+        if Date().timeIntervalSince(lastSend) > 0.25 {
+            lastSend = Date()
+            send(note: "en cours")
         }
     }
 
-    // MARK: - Vidéo
+    // MARK: - Lecture de la bande basse
 
-    private func handleVideo(_ sb: CMSampleBuffer) {
-        guard let shared,
-              let pb = CMSampleBufferGetImageBuffer(sb) else { return }
-
+    /// Échantillonne 10 points sur la largeur, dans la zone de ta barre d'élixir.
+    /// On n'envoie que 10 nombres : rien à voir avec le transfert d'une image.
+    private func sampleBand(_ sb: CMSampleBuffer) {
+        guard let pb = CMSampleBufferGetImageBuffer(sb) else { return }
         autoreleasepool {
-            let ci = CIImage(cvPixelBuffer: pb)
-            let w = ci.extent.width, h = ci.extent.height
+            CVPixelBufferLockBaseAddress(pb, .readOnly)
+            defer { CVPixelBufferUnlockBaseAddress(pb, .readOnly) }
 
-            // Vignette de l'écran entier, largeur 200 px
-            let scale = 200.0 / w
-            let small = ci.transformed(by: CGAffineTransform(scaleX: scale, y: scale))
+            let w = CVPixelBufferGetWidth(pb)
+            let h = CVPixelBufferGetHeight(pb)
+            let bpr = CVPixelBufferGetBytesPerRow(pb)
+            guard let base = CVPixelBufferGetBaseAddress(pb) else { return }
+            let buf = base.assumingMemoryBound(to: UInt8.self)
 
-            // Bande du bas en pleine largeur : c'est là que se trouve ta barre d'élixir
-            let bandH = h * 0.16
-            let band = ci.cropped(to: CGRect(x: 0, y: 0, width: w, height: bandH))
-                         .transformed(by: CGAffineTransform(scaleX: 320/w, y: 320/w))
-
-            write(image: small, to: shared.appendingPathComponent("frame.jpg"))
-            write(image: band,  to: shared.appendingPathComponent("band.jpg"))
+            // Ligne à 88 % de la hauteur : approximation de la barre d'élixir.
+            // On ajustera la valeur exacte une fois qu'on verra les mesures.
+            let y = Int(Double(h) * 0.88)
+            var out: [Int] = []
+            for i in 0..<10 {
+                let x = Int(Double(w) * (0.10 + 0.08 * Double(i)))
+                guard x < w, y < h else { continue }
+                let off = y * bpr + x * 4
+                let b = Int(buf[off]), g = Int(buf[off+1]), r = Int(buf[off+2])
+                // Indice de « violet » : rouge et bleu forts, vert faible
+                out.append(max(0, (r + b) / 2 - g))
+            }
+            bandSamples = out
         }
-    }
-
-    private func write(image: CIImage, to url: URL) {
-        guard let cg = ciContext.createCGImage(image, from: image.extent) else { return }
-        let ui = UIImage(cgImage: cg)
-        guard let data = ui.jpegData(compressionQuality: 0.5) else { return }
-        try? data.write(to: url, options: .atomic)
     }
 
     // MARK: - Audio
 
-    /// Niveau crête du tampon audio, entre 0 et 1.
     private func peakLevel(_ sb: CMSampleBuffer) -> Float {
         guard let bb = CMSampleBufferGetDataBuffer(sb) else { return 0 }
         var length = 0
@@ -97,31 +103,29 @@ class SampleHandler: RPBroadcastSampleHandler {
                                           totalLengthOut: &length,
                                           dataPointerOut: &ptr) == noErr,
               let ptr else { return 0 }
-
         let count = length / MemoryLayout<Int16>.size
         guard count > 0 else { return 0 }
         var peak: Int16 = 0
         ptr.withMemoryRebound(to: Int16.self, capacity: count) { p in
-            for i in 0..<count { peak = max(peak, abs(p[i])) }
+            for i in stride(from: 0, to: count, by: 2) { peak = max(peak, abs(p[i])) }
         }
         return Float(peak) / Float(Int16.max)
     }
 
-    // MARK: - Transmission
+    // MARK: - Envoi
 
-    private func writeState(note: String) {
-        guard let shared else { return }
+    private func send(note: String) {
         let state: [String: Any] = [
             "note": note,
             "elapsed": Date().timeIntervalSince(startedAt),
             "frames": frameCount,
             "audioBuffers": audioCount,
             "audioPeak": audioPeak,
+            "band": bandSamples,
             "at": Date().timeIntervalSince1970
         ]
-        audioPeak = 0     // remis à zéro à chaque écriture
-        if let d = try? JSONSerialization.data(withJSONObject: state) {
-            try? d.write(to: shared.appendingPathComponent("state.json"), options: .atomic)
-        }
+        audioPeak = 0
+        guard let d = try? JSONSerialization.data(withJSONObject: state) else { return }
+        conn?.send(content: d, completion: .idempotent)
     }
 }

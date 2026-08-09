@@ -6,6 +6,12 @@ import Network
 @MainActor
 final class CaptureBridge: ObservableObject {
 
+    /// Instance unique : l'écoute doit survivre à la fermeture du diagnostic.
+    static let shared = CaptureBridge()
+
+    /// Élixir lu sur TA barre. -1 tant qu'aucune mesure fiable n'est arrivée.
+    @Published var myElixir: Int = -1
+
     @Published var note = "—"
     @Published var frames = 0
     @Published var audioBuffers = 0
@@ -87,6 +93,9 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    // Un segment est considéré rempli si sa couleur est vive
+                    let filled = (j["band"] as? [Int] ?? []).filter { $0 > 25 }.count
+                    self.myElixir = (j["band"] as? [Int] ?? []).isEmpty ? -1 : filled
                     self.bestRowFrac  = j["bestRowFrac"] as? Double ?? 0
                     self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
                     self.audioFormat  = j["audioFormat"] as? String ?? "?"

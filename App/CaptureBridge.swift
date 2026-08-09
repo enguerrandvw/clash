@@ -94,6 +94,12 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    if let spec = j["spec"] as? String, !spec.isEmpty,
+                       let raw = Data(base64Encoded: spec) {
+                        SoundAnalyzer.shared.ingest([UInt8](raw),
+                                                    bands: j["bands"] as? Int ?? 16,
+                                                    myElixir: self.myElixir)
+                    }
                     if let b64 = j["digit"] as? String, !b64.isEmpty,
                        let raw = Data(base64Encoded: b64), raw.count == 640 {
                         self.digitImage = CaptureBridge.grayImage(raw, w: 32, h: 20)

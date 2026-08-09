@@ -14,6 +14,8 @@ final class PiPOverlay: NSObject, ObservableObject {
     var rate: Int = 1
     var hand: [String] = []
     var myElixir: Int = -1      // ton élixir, mesuré à l'écran
+    var flashUntil = Date.distantPast   // éclair visuel à chaque impulsion
+    var lastTag = ""            // "moi -4" ou "adverse"
 
     let displayLayer = AVSampleBufferDisplayLayer()
     private var controller: AVPictureInPictureController?
@@ -125,7 +127,8 @@ final class PiPOverlay: NSObject, ObservableObject {
             ctx.translateBy(x: 0, y: CGFloat(OverlayRenderer.height))
             ctx.scaleBy(x: 1, y: -1)
             OverlayRenderer.draw(into: ctx, elixir: elixir, rate: rate,
-                                 hand: hand, myElixir: myElixir)
+                                 hand: hand, myElixir: myElixir,
+                                 flash: Date() < flashUntil, tag: lastTag)
         }
         CVPixelBufferUnlockBaseAddress(buffer, [])
 

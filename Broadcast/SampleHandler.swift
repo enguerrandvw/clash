@@ -110,11 +110,13 @@ class SampleHandler: RPBroadcastSampleHandler {
                 var bestRow = 0
                 var bestScore = -1
                 for k in 0..<24 {
-                    let frac = 0.66 + 0.34 * Double(k) / 23.0
+                    // Zone réelle de la barre : entre 92 % et 99 % de la hauteur
+                    let frac = 0.92 + 0.07 * Double(k) / 23.0
                     let row = min(ch - 1, Int(Double(ch) * frac))
                     var sum = 0, n = 0
                     for i in 0..<20 {
-                        let x = Int(Double(cw) * (0.10 + 0.04 * Double(i)))
+                        // La barre s'étend de 32 % à 96 % de la largeur
+                        let x = Int(Double(cw) * (0.33 + 0.62 * Double(i) / 19.0))
                         let off = row * cbpr + x * 2
                         guard x < cw, off >= 0, off + 1 < ctotal else { continue }
                         sum += abs(Int(cbuf[off]) - 128) + abs(Int(cbuf[off + 1]) - 128)
@@ -129,7 +131,8 @@ class SampleHandler: RPBroadcastSampleHandler {
 
                 // --- Lecture des 10 segments sur la ligne la plus saturée ---
                 for i in 0..<10 {
-                    let x = Int(Double(cw) * (0.10 + 0.08 * Double(i)))
+                    // Centre de chacun des 10 segments d'élixir
+                    let x = Int(Double(cw) * (0.32 + 0.64 * (Double(i) + 0.5) / 10.0))
                     let off = bestRow * cbpr + x * 2
                     guard x < cw, off >= 0, off + 1 < ctotal else { continue }
                     let cb = Int(cbuf[off]) - 128

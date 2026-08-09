@@ -60,12 +60,12 @@ struct DiagnosticView: View {
                 // 4. Échantillons de la bande basse
                 if !bridge.band.isEmpty {
                     VStack(spacing: 6) {
-                        Text("Barre d'élixir — 10 points échantillonnés")
+                        Text("Barre d'élixir — indice rose par segment (mesuré : \(bridge.myElixir))")
                             .font(.caption).foregroundStyle(.secondary)
                         HStack(spacing: 3) {
                             ForEach(Array(bridge.band.enumerated()), id: \.offset) { _, v in
                                 RoundedRectangle(cornerRadius: 3)
-                                    .fill(v > 40 ? Color.purple : Color.gray.opacity(0.25))
+                                    .fill(v > 18 ? Color.purple : Color.gray.opacity(0.25))
                                     .frame(height: 34)
                                     .overlay(Text("\(v)").font(.system(size: 9))
                                                 .foregroundStyle(.white))
@@ -73,6 +73,21 @@ struct DiagnosticView: View {
                         }
                         .padding(.horizontal, 20)
                     }
+                }
+
+                if let img = bridge.digitImage {
+                    VStack(spacing: 6) {
+                        Text("Chiffre d'élixir capturé — il doit être centré et net")
+                            .font(.caption).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        Image(uiImage: img)
+                            .interpolation(.none)
+                            .resizable()
+                            .frame(width: 224, height: 140)
+                            .background(Color.black)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .padding(.horizontal, 20)
                 }
 
                 if !bridge.rowProfile.isEmpty {

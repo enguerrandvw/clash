@@ -24,6 +24,11 @@ final class SoundAnalyzer: ObservableObject {
     @Published var threshold: Double = 22      // sensibilité, réglable
     @Published var minScore: Double = 0.55     // en dessous, on n'affirme rien
 
+    // Diagnostic : ce que l'extension envoie réellement
+    @Published var bandsSeen = 0
+    @Published var classifyOK = 0
+    @Published var classifyFail = 0
+
     /// Appelé à chaque impulsion : sert à faire clignoter la fenêtre flottante.
     var onPulse: ((String) -> Void)?
 
@@ -39,6 +44,7 @@ final class SoundAnalyzer: ObservableObject {
     /// Ajoute les trames reçues et cherche les impulsions.
     func ingest(_ data: [UInt8], levels: [UInt8], bands: Int, myElixir: Int) {
         guard bands > 0 else { return }
+        bandsSeen = bands
         let count = min(data.count / bands, max(levels.count, 1))
         guard count > 0 else { return }
 
@@ -69,6 +75,7 @@ final class SoundAnalyzer: ObservableObject {
             if capture.count >= 12 {
                 p.signature = capture.first ?? []
                 p.result = SoundClassifier.classify(capture)
+                if p.result == nil { classifyFail += 1 } else { classifyOK += 1 }
             }
             capturing = false
 

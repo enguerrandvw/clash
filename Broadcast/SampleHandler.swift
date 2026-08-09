@@ -270,7 +270,9 @@ class SampleHandler: RPBroadcastSampleHandler {
 
         while pending.count >= fftSize {
             var chunk = Array(pending.prefix(fftSize))
-            pending.removeFirst(fftSize)
+            // Avance de 512 seulement : les trames se chevauchent de moitié,
+            // exactement comme dans le calcul des empreintes de référence.
+            pending.removeFirst(fftSize / 2)
 
             vDSP_vmul(chunk, 1, window, 1, &chunk, 1, vDSP_Length(fftSize))
 

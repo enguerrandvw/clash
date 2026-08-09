@@ -87,11 +87,13 @@ struct Spectrogram: View {
                 let chh = size.height / CGFloat(bands)
                 for (t, frame) in frames.enumerated() {
                     for (b, v) in frame.enumerated() {
-                        let level = Double(v) / 255.0
-                        guard level > 0.05 else { continue }
-                        let color = Color(hue: 0.75 - 0.55 * level,
-                                          saturation: 0.9,
-                                          brightness: min(1, 0.25 + level))
+                        // On étire le haut de l'échelle : les valeurs utiles
+                        // se situent entre 150 et 255 après normalisation.
+                        let level = max(0, (Double(v) - 140) / 115)
+                        guard level > 0.04 else { continue }
+                        let color = Color(hue: 0.72 - 0.62 * level,
+                                          saturation: 0.95,
+                                          brightness: min(1, 0.2 + level))
                         let rect = CGRect(x: CGFloat(t) * cw,
                                           y: size.height - CGFloat(b + 1) * chh,
                                           width: max(cw, 1), height: chh + 0.5)

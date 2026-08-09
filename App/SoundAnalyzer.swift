@@ -23,6 +23,7 @@ final class SoundAnalyzer: ObservableObject {
     @Published var onsets: [Onset] = []
     @Published var energy: Double = 0
     @Published var threshold: Double = 22      // sensibilité, réglable
+    @Published var minScore: Double = 0.55     // en dessous, on n'affirme rien
 
     /// Appelé à chaque impulsion : sert à faire clignoter la fenêtre flottante.
     var onPulse: ((String) -> Void)?
@@ -52,21 +53,21 @@ final class SoundAnalyzer: ObservableObject {
             detect(level: lvl, myElixir: myElixir)
 
             // Une impulsion vient d'être repérée : on met de côté ses trames
-            if capturing && capture.count < 8 { capture.append(frame) }
+            if capturing && capture.count < 26 { capture.append(frame) }
         }
         if frames.count > maxFrames {
             frames.removeFirst(frames.count - maxFrames)
         }
 
         // Une impulsion en attente : on regarde si l'élixir a chuté depuis
-        if var p = pendingOnset, Date().timeIntervalSince(p.at) > 0.6,
+        if var p = pendingOnset, Date().timeIntervalSince(p.at) > 0.75,
            pendingIndex != nil {
 
             p.myElixirAfter = myElixir
             let drop = p.myElixirBefore - p.myElixirAfter
 
             // Les trames collectées après l'impulsion forment sa signature
-            if capture.count >= 4 {
+            if capture.count >= 12 {
                 // On isole ce que le son a AJOUTÉ au fond sonore ambiant,
                 // puis on renormalise : c'est comparable à un son propre.
                 let delta: [[UInt8]] = capture.map { frame in
@@ -84,9 +85,11 @@ final class SoundAnalyzer: ObservableObject {
             }
             capturing = false
 
-            let name = p.match?.card?.name
-                ?? p.match.map { SoundMatcher.plainName($0.refCard) }
-                ?? "inconnu (\(capture.count) trames)"
+            let sure = (p.match?.score ?? 0) >= minScore
+            let name = !sure ? "?"
+                : (p.match?.card?.name
+                   ?? p.match.map { SoundMatcher.plainName($0.refCard) }
+                   ?? "?")
             let pct = Int((p.match?.score ?? 0) * 100)
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"

@@ -70,9 +70,13 @@ enum SoundMatcher {
     /// au même instant que dans le fichier de référence.
     private static func bestDistance(_ frames: [[UInt8]], _ ref: SoundRef) -> Double {
         var best = Double.greatestFiniteMagnitude
-        for shift in 0...3 {
+        // Le son de la troupe arrive APRÈS le tintement d'élixir, avec un
+        // retard variable. On fait donc glisser la référence sur toute la
+        // fenêtre captée et on retient la position la plus ressemblante.
+        let maxShift = max(0, frames.count - ref.frames.count)
+        for shift in 0...maxShift {
             let sliced = Array(frames.dropFirst(shift))
-            guard sliced.count >= 4 else { continue }
+            guard sliced.count >= ref.frames.count else { continue }
             best = min(best, distance(sliced, ref.frames))
         }
         return best

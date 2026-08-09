@@ -46,6 +46,7 @@ struct SoundView: View {
             ScrollView {
                 LazyVStack(spacing: 6) {
                     ForEach(sound.onsets) { o in
+                        VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(o.at, style: .time)
                                 .font(.caption.monospacedDigit())
@@ -57,6 +58,16 @@ struct SoundView: View {
                             Spacer()
                             Text("force \(Int(o.strength))")
                                 .font(.caption).foregroundStyle(.secondary)
+                        }
+                        // Les deux candidats suivants : la bonne carte
+                        // est-elle au moins dans le peloton de tête ?
+                        if o.top.count > 1 {
+                            Text(o.top.dropFirst().map {
+                                "\($0.card?.name ?? SoundMatcher.plainName($0.refCard)) \(Int($0.score * 100))%"
+                            }.joined(separator: "  ·  "))
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                        }
                         }
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(Color.gray.opacity(0.10))

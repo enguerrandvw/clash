@@ -36,6 +36,10 @@ struct SoundView: View {
 
             Divider()
 
+            Text("\(SoundRefs.all.count) sons de référence · \(SoundMatcher.cardByFolder.count) reliés à une carte")
+                .font(.caption).foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+
             Text("Impulsions détectées : \(sound.onsets.count)")
                 .font(.subheadline.weight(.medium))
 

@@ -3,6 +3,7 @@ import AVKit
 
 struct ContentView: View {
     @EnvironmentObject var engine: ElixirEngine
+    @State private var showDiag = false
 
     private let costs = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -56,11 +57,23 @@ struct ContentView: View {
 
                 VoiceSection(voice: engine.voice)
 
+                Button {
+                    showDiag = true
+                } label: {
+                    Label("Diagnostic de capture", systemImage: "record.circle")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Color.teal.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 24)
+
                 OverlayStatus(overlay: engine.overlay, engineStatus: engine.status)
                     .padding(.bottom, 30)
             }
             .padding(.vertical, 16)
         }
+        .sheet(isPresented: $showDiag) { DiagnosticView() }
     }
 }
 

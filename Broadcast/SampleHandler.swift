@@ -17,6 +17,8 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var startedAt = Date()
 
     private var bandSamples: [Int] = []
+    private var rowProfile: [Int] = []
+    private var bestRowFrac: Double = 0
     private var pixelFormat = ""
     private var audioFormat = ""
 
@@ -99,11 +101,36 @@ class SampleHandler: RPBroadcastSampleHandler {
                 let cw = CVPixelBufferGetWidthOfPlane(pb, 1)
                 let ch = CVPixelBufferGetHeightOfPlane(pb, 1)
                 let ctotal = cbpr * ch
-                let cy = min(ch - 1, Int(Double(ch) * 0.88))
                 let cbuf = cbase.assumingMemoryBound(to: UInt8.self)
+
+                // --- Calibrage : on balaie le tiers inférieur de l'écran ---
+                // Pour chaque ligne, on mesure la saturation moyenne.
+                // La barre d'élixir, très violette, ressortira nettement.
+                var profile: [Int] = []
+                var bestRow = 0
+                var bestScore = -1
+                for k in 0..<24 {
+                    let frac = 0.66 + 0.34 * Double(k) / 23.0
+                    let row = min(ch - 1, Int(Double(ch) * frac))
+                    var sum = 0, n = 0
+                    for i in 0..<20 {
+                        let x = Int(Double(cw) * (0.10 + 0.04 * Double(i)))
+                        let off = row * cbpr + x * 2
+                        guard x < cw, off >= 0, off + 1 < ctotal else { continue }
+                        sum += abs(Int(cbuf[off]) - 128) + abs(Int(cbuf[off + 1]) - 128)
+                        n += 1
+                    }
+                    let avg = n > 0 ? sum / n : 0
+                    profile.append(avg)
+                    if avg > bestScore { bestScore = avg; bestRow = row }
+                }
+                rowProfile = profile
+                bestRowFrac = ch > 0 ? Double(bestRow) / Double(ch) : 0
+
+                // --- Lecture des 10 segments sur la ligne la plus saturée ---
                 for i in 0..<10 {
                     let x = Int(Double(cw) * (0.10 + 0.08 * Double(i)))
-                    let off = cy * cbpr + x * 2
+                    let off = bestRow * cbpr + x * 2
                     guard x < cw, off >= 0, off + 1 < ctotal else { continue }
                     let cb = Int(cbuf[off]) - 128
                     let cr = Int(cbuf[off + 1]) - 128
@@ -190,6 +217,8 @@ class SampleHandler: RPBroadcastSampleHandler {
             "audioPeak": audioPeak,
             "audioPeakMax": audioPeakMax,
             "band": bandSamples,
+            "rowProfile": rowProfile,
+            "bestRowFrac": bestRowFrac,
             "pixelFormat": pixelFormat,
             "audioFormat": audioFormat,
             "memoryMB": memoryMB(),

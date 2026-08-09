@@ -11,7 +11,8 @@ enum OverlayRenderer {
     private static let purple     = UIColor(red: 0.74, green: 0.38, blue: 1.00, alpha: 1)
     private static let purpleDim  = UIColor(red: 0.26, green: 0.14, blue: 0.38, alpha: 1)
 
-    static func draw(into ctx: CGContext, elixir: Double, rate: Int, hand: [String]) {
+    static func draw(into ctx: CGContext, elixir: Double, rate: Int,
+                     hand: [String], myElixir: Int = -1) {
 
         let w = CGFloat(width), h = CGFloat(height)
 
@@ -40,8 +41,32 @@ enum OverlayRenderer {
         drawDrop(ctx: ctx, rect: CGRect(x: dropX, y: (h - dropH) / 2,
                                         width: dropH * 0.72, height: dropH))
 
-        // ---- Badge de vitesse, coin haut droit ----
+        // ---- Ta mesure d'élixir, colonne de droite ----
         var barRight = w - pad
+        if myElixir >= 0 {
+            let mFont = UIFont.systemFont(ofSize: 44, weight: .bold)
+            let txt = "\(myElixir)"
+            let mAttr: [NSAttributedString.Key: Any] = [
+                .font: mFont, .foregroundColor: UIColor.systemTeal
+            ]
+            let mSize = (txt as NSString).size(withAttributes: mAttr)
+            let x = w - pad - mSize.width
+            (txt as NSString).draw(at: CGPoint(x: x, y: h/2 - mSize.height/2 + 6),
+                                   withAttributes: mAttr)
+
+            let lFont = UIFont.systemFont(ofSize: 15, weight: .semibold)
+            let lAttr: [NSAttributedString.Key: Any] = [
+                .font: lFont, .foregroundColor: UIColor.systemTeal.withAlphaComponent(0.75)
+            ]
+            let lSize = ("moi" as NSString).size(withAttributes: lAttr)
+            ("moi" as NSString).draw(
+                at: CGPoint(x: x + (mSize.width - lSize.width) / 2, y: 10),
+                withAttributes: lAttr)
+
+            barRight = x - 18
+        }
+
+        // ---- Badge de vitesse ----
         if rate > 1 {
             let badge = "x\(rate)"
             let bFont = UIFont.systemFont(ofSize: 30, weight: .heavy)
@@ -50,10 +75,10 @@ enum OverlayRenderer {
                 .foregroundColor: rate == 3 ? UIColor.systemOrange : UIColor.systemYellow
             ]
             let bSize = (badge as NSString).size(withAttributes: bAttr)
-            (badge as NSString).draw(at: CGPoint(x: w - pad - bSize.width,
+            (badge as NSString).draw(at: CGPoint(x: barRight - bSize.width,
                                                  y: (h - bSize.height) / 2),
                                      withAttributes: bAttr)
-            barRight = w - pad - bSize.width - 16
+            barRight -= bSize.width + 16
         }
 
         // ---- Barre segmentée, à droite du chiffre ----

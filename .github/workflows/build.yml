@@ -8,6 +8,8 @@ on:
 jobs:
   build:
     runs-on: macos-15
+    permissions:
+      contents: write
 
     steps:
       - name: Récupérer le code
@@ -15,6 +17,22 @@ jobs:
 
       - name: Installer XcodeGen
         run: brew install xcodegen
+
+      # --- Sons de référence : tout se passe côté serveur ---
+      - name: Cloner le dépôt de sons
+        run: |
+          git clone --depth 1 \
+            https://github.com/Benantana/Clash-Royale-Sound-Effects.git /tmp/sfx
+          echo "Taille :"; du -sh /tmp/sfx
+
+      - name: Calculer les empreintes sonores
+        run: |
+          pip3 install --quiet --break-system-packages numpy || pip3 install --quiet numpy
+          python3 Tools/make_fingerprints.py /tmp/sfx App/SoundFingerprints.swift
+          echo "--- Aperçu du fichier généré ---"
+          head -c 600 App/SoundFingerprints.swift
+          echo
+          grep -c "SoundRef(card:" App/SoundFingerprints.swift
 
       - name: Générer le projet Xcode
         run: xcodegen generate
@@ -38,8 +56,10 @@ jobs:
           cp -R build/Build/Products/Release-iphoneos/ClashElixir.app Payload/
           zip -qry ClashElixir.ipa Payload
 
-      - name: Publier l'IPA
-        uses: actions/upload-artifact@v4
+      - name: Publier en Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: ClashElixir-ipa
-          path: ClashElixir.ipa
+          tag_name: build-${{ github.run_number }}
+          files: ClashElixir.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

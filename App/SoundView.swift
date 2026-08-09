@@ -43,6 +43,13 @@ struct SoundView: View {
 
             Divider()
 
+            Text("Bandes reçues : \(sound.bandsSeen) · attendu \(SoundModel.bands)"
+                 + "  ·  analyses \(sound.classifyOK) / refusées \(sound.classifyFail)")
+                .font(.caption2)
+                .foregroundStyle(sound.bandsSeen == SoundModel.bands ? .green : .red)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+
             Text(SoundClassifier.isReady
                  ? "Modèle : \(SoundModel.labels.count - 1) cartes · précision \(Int(SoundModel.accuracy * 100)) %"
                  : "Modèle absent")
@@ -62,6 +69,7 @@ struct SoundView: View {
                 LazyVStack(spacing: 6) {
                     ForEach(sound.onsets) { o in
                         VStack(alignment: .leading, spacing: 3) {
+                        VStack(alignment: .leading, spacing: 3) {
                         HStack {
                             Text(o.at, style: .time)
                                 .font(.caption.monospacedDigit())
@@ -73,6 +81,11 @@ struct SoundView: View {
                             Spacer()
                             Text("force \(Int(o.strength))")
                                 .font(.caption).foregroundStyle(.secondary)
+                        }
+                        }
+                        if let r = o.result, !r.runnersUp.isEmpty {
+                            Text(r.runnersUp)
+                                .font(.caption2).foregroundStyle(.secondary)
                         }
                         }
                         .padding(.horizontal, 14).padding(.vertical, 7)

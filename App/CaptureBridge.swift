@@ -12,6 +12,8 @@ final class CaptureBridge: ObservableObject {
     @Published var audioPeak: Float = 0
     @Published var audioPeakMax: Float = 0
     @Published var band: [Int] = []
+    @Published var rowProfile: [Int] = []
+    @Published var bestRowFrac: Double = 0
     @Published var pixelFormat = "?"
     @Published var audioFormat = "?"
     @Published var memoryMB: Double = 0
@@ -84,6 +86,8 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeak    = j["audioPeak"] as? Float ?? 0
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
+                    self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    self.bestRowFrac  = j["bestRowFrac"] as? Double ?? 0
                     self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
                     self.audioFormat  = j["audioFormat"] as? String ?? "?"
                     self.memoryMB     = j["memoryMB"] as? Double ?? 0

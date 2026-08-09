@@ -90,11 +90,13 @@ def fingerprint(samples):
             break
         chunk = samples[i:i + FFT_SIZE] * WINDOW
         mags = np.abs(np.fft.rfft(chunk))
-        row = []
+        dbs = []
         for (i0, i1) in EDGES:
             avg = mags[i0:i1].mean() if i1 > i0 else 0.0
-            db = 20 * np.log10(max(avg, 1e-6))
-            row.append(int(np.clip((db + 80) / 80 * 255, 0, 255)))
+            dbs.append(20 * np.log10(max(avg, 1e-6)))
+        # Forme normalisée : identique au calcul de l'extension iOS
+        peak_db = max(dbs)
+        row = [int(np.clip((d - peak_db + 48) / 48 * 255, 0, 255)) for d in dbs]
         frames.append(row)
 
     if len(frames) < 4:

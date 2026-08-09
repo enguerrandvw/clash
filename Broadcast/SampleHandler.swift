@@ -23,7 +23,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     // --- Analyse spectrale ---
     private let fftSize = 1024
-    private let bandCount = 16
+    private let bandCount = 32
     private var fftSetup: FFTSetup?
     private var window = [Float]()
     private var pending = [Float]()      // échantillons en attente

@@ -16,6 +16,7 @@ final class SoundAnalyzer: ObservableObject {
         var myElixirAfter: Int
         var attribution: String  // "moi", "adverse", ou "?"
         var match: SoundMatcher.Match?
+        var top: [SoundMatcher.Match] = []
     }
 
     @Published var frames: [[UInt8]] = []      // spectres récents
@@ -33,6 +34,7 @@ final class SoundAnalyzer: ObservableObject {
     private var pendingIndex: Int?
     private var capturing = false
     private var capture: [[UInt8]] = []     // trames suivant l'impulsion
+    private var background: [Double] = []   // spectre moyen juste avant
 
     /// Ajoute les trames reçues et cherche les impulsions.
     func ingest(_ data: [UInt8], levels: [UInt8], bands: Int, myElixir: Int) {
@@ -65,8 +67,20 @@ final class SoundAnalyzer: ObservableObject {
 
             // Les trames collectées après l'impulsion forment sa signature
             if capture.count >= 4 {
-                p.signature = capture.first ?? []
-                p.match = SoundMatcher.best(for: capture)
+                // On isole ce que le son a AJOUTÉ au fond sonore ambiant,
+                // puis on renormalise : c'est comparable à un son propre.
+                let delta: [[UInt8]] = capture.map { frame in
+                    guard background.count == frame.count else { return frame }
+                    let diff = (0..<frame.count).map {
+                        max(0.0, Double(frame[$0]) - background[$0])
+                    }
+                    let peak = diff.max() ?? 0
+                    guard peak > 4 else { return frame }
+                    return diff.map { UInt8(min(255, $0 / peak * 255)) }
+                }
+                p.signature = delta.first ?? []
+                p.top = SoundMatcher.top(3, for: delta)
+                p.match = p.top.first
             }
             capturing = false
 
@@ -105,6 +119,18 @@ final class SoundAnalyzer: ObservableObject {
         // 8 trames qui SUIVENT l'impulsion, pas encore reçues.
         capturing = true
         capture.removeAll(keepingCapacity: true)
+
+        // Fond sonore : moyenne des 6 trames précédant l'impulsion
+        let prev = frames.suffix(7).dropLast()
+        if let width = prev.first?.count, !prev.isEmpty {
+            var acc = [Double](repeating: 0, count: width)
+            for f in prev where f.count == width {
+                for i in 0..<width { acc[i] += Double(f[i]) }
+            }
+            background = acc.map { $0 / Double(prev.count) }
+        } else {
+            background = []
+        }
         pendingIndex = 0
         pendingOnset = Onset(at: now, strength: jump, signature: [],
                              myElixirBefore: myElixir, myElixirAfter: myElixir,

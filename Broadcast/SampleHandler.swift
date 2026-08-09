@@ -1,6 +1,7 @@
 import ReplayKit
 import AVFoundation
 import Network
+import Accelerate
 
 // Extension de capture. Limite iOS : 50 Mo de RAM.
 // Cette version ne suppose RIEN sur le format des tampons : elle le détecte,
@@ -19,12 +20,24 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var bandSamples: [Int] = []
     private var rowProfile: [Int] = []
     private var digitB64 = ""          // imagette du chiffre d'élixir
+
+    // --- Analyse spectrale ---
+    private let fftSize = 1024
+    private let bandCount = 16
+    private var fftSetup: FFTSetup?
+    private var window = [Float]()
+    private var pending = [Float]()      // échantillons en attente
+    private var frames: [UInt8] = []     // spectres accumulés depuis le dernier envoi
+    private var channels = 1
     private var bestRowFrac: Double = 0
     private var pixelFormat = ""
     private var audioFormat = ""
 
     override func broadcastStarted(withSetupInfo setupInfo: [String: NSObject]?) {
         startedAt = Date()
+        fftSetup = vDSP_create_fftsetup(10, FFTRadix(kFFTRadix2))
+        window = [Float](repeating: 0, count: fftSize)
+        vDSP_hann_window(&window, vDSP_Length(fftSize), Int32(vDSP_HANN_NORM))
         let c = NWConnection(host: "127.0.0.1", port: 45678, using: .udp)
         c.start(queue: .global(qos: .utility))
         conn = c
@@ -218,6 +231,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             blockBufferOut: &block)
         guard st == noErr, let data = abl.mBuffers.mData else { return 0 }
 
+        channels = max(1, Int(asbd.mChannelsPerFrame))
         let bytes = Int(abl.mBuffers.mDataByteSize)
         var peak: Float = 0
 
@@ -233,8 +247,70 @@ class SampleHandler: RPBroadcastSampleHandler {
             var m: Int32 = 0
             for i in stride(from: 0, to: n, by: 4) { m = max(m, abs(Int32(p[i]))) }
             peak = Float(m) / Float(Int16.max)
+
+            // On empile les échantillons en mono pour l'analyse spectrale
+            var i = 0
+            while i < n {
+                pending.append(Float(p[i]) / 32768.0)
+                i += channels
+            }
+            analysePending()
         }
         return min(1, peak)
+    }
+
+    // MARK: - Spectre
+
+    /// Découpe les échantillons en trames de 1024 (~23 ms) et calcule
+    /// l'énergie dans 16 bandes réparties logarithmiquement.
+    private func analysePending() {
+        guard let setup = fftSetup else { return }
+        let half = fftSize / 2
+
+        while pending.count >= fftSize {
+            var chunk = Array(pending.prefix(fftSize))
+            pending.removeFirst(fftSize)
+
+            vDSP_vmul(chunk, 1, window, 1, &chunk, 1, vDSP_Length(fftSize))
+
+            var real = [Float](repeating: 0, count: half)
+            var imag = [Float](repeating: 0, count: half)
+            var mags = [Float](repeating: 0, count: half)
+
+            real.withUnsafeMutableBufferPointer { rp in
+                imag.withUnsafeMutableBufferPointer { ip in
+                    var split = DSPSplitComplex(realp: rp.baseAddress!, imagp: ip.baseAddress!)
+                    chunk.withUnsafeBufferPointer { cp in
+                        cp.baseAddress!.withMemoryRebound(to: DSPComplex.self, capacity: half) {
+                            vDSP_ctoz($0, 2, &split, 1, vDSP_Length(half))
+                        }
+                    }
+                    vDSP_fft_zrip(setup, &split, 1, 10, FFTDirection(FFT_FORWARD))
+                    vDSP_zvabs(&split, 1, &mags, 1, vDSP_Length(half))
+                }
+            }
+
+            // 16 bandes logarithmiques entre 200 Hz et 11 kHz
+            let binHz = 44100.0 / Double(fftSize)
+            for b in 0..<bandCount {
+                let f0 = 200.0 * pow(11000.0 / 200.0, Double(b) / Double(bandCount))
+                let f1 = 200.0 * pow(11000.0 / 200.0, Double(b + 1) / Double(bandCount))
+                let i0 = max(1, Int(f0 / binHz))
+                let i1 = min(half - 1, max(i0 + 1, Int(f1 / binHz)))
+                var sum: Float = 0
+                for i in i0..<i1 { sum += mags[i] }
+                let avg = sum / Float(max(1, i1 - i0))
+                // Échelle logarithmique, -80 dB à 0 dB ramenés sur 0-255
+                let db = 20 * log10(max(avg, 1e-6))
+                let v = max(0, min(255, Int((db + 80) / 80 * 255)))
+                frames.append(UInt8(v))
+            }
+            // Sécurité : on ne laisse pas la file grossir sans fin
+            if frames.count > bandCount * 40 {
+                frames.removeFirst(frames.count - bandCount * 40)
+            }
+        }
+        if pending.count > fftSize * 4 { pending.removeFirst(pending.count - fftSize * 2) }
     }
 
     // MARK: - Outils
@@ -271,6 +347,8 @@ class SampleHandler: RPBroadcastSampleHandler {
             "band": bandSamples,
             "rowProfile": rowProfile,
             "digit": digitB64,
+            "spec": Data(frames).base64EncodedString(),
+            "bands": bandCount,
             "bestRowFrac": bestRowFrac,
             "pixelFormat": pixelFormat,
             "audioFormat": audioFormat,
@@ -278,6 +356,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             "at": Date().timeIntervalSince1970
         ]
         audioPeak = 0
+        frames.removeAll(keepingCapacity: true)
         guard let d = try? JSONSerialization.data(withJSONObject: state) else { return }
         conn?.send(content: d, completion: .idempotent)
     }

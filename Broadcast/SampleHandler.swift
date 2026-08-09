@@ -18,6 +18,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     private var bandSamples: [Int] = []
     private var rowProfile: [Int] = []
+    private var digitB64 = ""          // imagette du chiffre d'élixir
     private var bestRowFrac: Double = 0
     private var pixelFormat = ""
     private var audioFormat = ""
@@ -116,10 +117,14 @@ class SampleHandler: RPBroadcastSampleHandler {
                     var sum = 0, n = 0
                     for i in 0..<20 {
                         // La barre s'étend de 32 % à 96 % de la largeur
-                        let x = Int(Double(cw) * (0.33 + 0.62 * Double(i) / 19.0))
+                        let x = Int(Double(cw) * (0.29 + 0.67 * Double(i) / 19.0))
                         let off = row * cbpr + x * 2
                         guard x < cw, off >= 0, off + 1 < ctotal else { continue }
-                        sum += abs(Int(cbuf[off]) - 128) + abs(Int(cbuf[off + 1]) - 128)
+                        // Indice ROSE : les deux chromas doivent dépasser le neutre.
+                        // Le bleu du bandeau a Cr en dessous, il est donc exclu.
+                        let cb = Int(cbuf[off]) - 128
+                        let cr = Int(cbuf[off + 1]) - 128
+                        sum += max(0, min(cb, cr))
                         n += 1
                     }
                     let avg = n > 0 ? sum / n : 0
@@ -132,17 +137,51 @@ class SampleHandler: RPBroadcastSampleHandler {
                 // --- Lecture des 10 segments sur la ligne la plus saturée ---
                 for i in 0..<10 {
                     // Centre de chacun des 10 segments d'élixir
-                    let x = Int(Double(cw) * (0.32 + 0.64 * (Double(i) + 0.5) / 10.0))
+                    let x = Int(Double(cw) * (0.285 + 0.68 * (Double(i) + 0.5) / 10.0))
                     let off = bestRow * cbpr + x * 2
                     guard x < cw, off >= 0, off + 1 < ctotal else { continue }
                     let cb = Int(cbuf[off]) - 128
                     let cr = Int(cbuf[off + 1]) - 128
-                    out.append(abs(cb) + abs(cr))
+                    out.append(max(0, min(cb, cr)))
                 }
             }
         }
 
         if !out.isEmpty { bandSamples = out }
+
+        readDigit(pb)
+    }
+
+    // Découpe la zone du chiffre d'élixir et la réduit à 32x20 en niveaux de gris.
+    // 640 octets seulement : ça tient largement dans un datagramme.
+    private func readDigit(_ pb: CVPixelBuffer) {
+        guard CVPixelBufferIsPlanar(pb),
+              let base = CVPixelBufferGetBaseAddressOfPlane(pb, 0) else { return }
+
+        let bpr = CVPixelBufferGetBytesPerRowOfPlane(pb, 0)
+        let pw  = CVPixelBufferGetWidthOfPlane(pb, 0)
+        let ph  = CVPixelBufferGetHeightOfPlane(pb, 0)
+        guard pw > 0, ph > 0, bpr > 0 else { return }
+        let buf = base.assumingMemoryBound(to: UInt8.self)
+        let total = bpr * ph
+
+        // Zone du chiffre, mesurée sur capture réelle
+        let x0 = Int(Double(pw) * 0.23), x1 = Int(Double(pw) * 0.36)
+        let y0 = Int(Double(ph) * 0.935), y1 = Int(Double(ph) * 0.973)
+        let rw = max(1, x1 - x0), rh = max(1, y1 - y0)
+
+        let ow = 32, oh = 20
+        var px = [UInt8](repeating: 0, count: ow * oh)
+        for j in 0..<oh {
+            let sy = y0 + j * rh / oh
+            for i in 0..<ow {
+                let sx = x0 + i * rw / ow
+                let off = sy * bpr + sx
+                guard sx >= 0, sx < pw, sy >= 0, sy < ph, off < total else { continue }
+                px[j * ow + i] = buf[off]
+            }
+        }
+        digitB64 = Data(px).base64EncodedString()
     }
 
     // MARK: - Audio, sans hypothèse sur le format
@@ -221,6 +260,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             "audioPeakMax": audioPeakMax,
             "band": bandSamples,
             "rowProfile": rowProfile,
+            "digit": digitB64,
             "bestRowFrac": bestRowFrac,
             "pixelFormat": pixelFormat,
             "audioFormat": audioFormat,

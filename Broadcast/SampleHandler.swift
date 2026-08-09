@@ -44,7 +44,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             case .video:
                 frameCount += 1
                 // 1 image sur 15 : suffisant, et deux fois moins de travail
-                if frameCount % 15 == 0 { readBand(sb) }
+                if frameCount % 5 == 0 { readBand(sb) }
             case .audioApp:
                 audioCount += 1
                 let p = readPeak(sb)
@@ -54,7 +54,7 @@ class SampleHandler: RPBroadcastSampleHandler {
                 break
             }
 
-            if Date().timeIntervalSince(lastSend) > 0.25 {
+            if Date().timeIntervalSince(lastSend) > 0.1 {
                 lastSend = Date()
                 send(note: "en cours")
             }
@@ -137,12 +137,22 @@ class SampleHandler: RPBroadcastSampleHandler {
                 // --- Lecture des 10 segments sur la ligne la plus saturée ---
                 for i in 0..<10 {
                     // Centre de chacun des 10 segments d'élixir
-                    let x = Int(Double(cw) * (0.285 + 0.68 * (Double(i) + 0.5) / 10.0))
-                    let off = bestRow * cbpr + x * 2
-                    guard x < cw, off >= 0, off + 1 < ctotal else { continue }
-                    let cb = Int(cbuf[off]) - 128
-                    let cr = Int(cbuf[off + 1]) - 128
-                    out.append(max(0, min(cb, cr)))
+                    // On resserre : 0.30 à 0.945, et on vise légèrement
+                    // vers l'intérieur pour ne pas déborder du dernier segment.
+                    let t = (Double(i) + 0.5) / 10.0
+                    let x = Int(Double(cw) * (0.30 + 0.645 * t))
+                    // On échantillonne 3 lignes autour de la meilleure et on
+                    // garde la plus rose : robuste à un léger décalage vertical.
+                    var best = 0
+                    for dy in [-2, 0, 2] {
+                        let row = max(0, min(ch - 1, bestRow + dy))
+                        let off = row * cbpr + x * 2
+                        guard x < cw, off >= 0, off + 1 < ctotal else { continue }
+                        let cb = Int(cbuf[off]) - 128
+                        let cr = Int(cbuf[off + 1]) - 128
+                        best = max(best, max(0, min(cb, cr)))
+                    }
+                    out.append(best)
                 }
             }
         }

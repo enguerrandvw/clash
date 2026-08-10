@@ -219,13 +219,15 @@ def main():
 
     print("\nGénération des exemples…")
     for ci, c in enumerate(labels):
-        for _ in range(PER_CLASS):
-            bg = random_noise() * rng.uniform(0.05, 0.8)
+        n_ex = PER_CLASS // 3 if c == "__fond__" else PER_CLASS
+        for _ in range(n_ex):
+            bg = random_noise() * rng.uniform(0.15, 1.4)
             if c == "__fond__":
                 mix = bg
             else:
                 snd = clean[c][rng.integers(len(clean[c]))]
-                snd = snd * rng.uniform(0.3, 1.0)
+                # Souvent PLUS FAIBLE que le bruit ambiant : c'est le cas réel
+                snd = snd * rng.uniform(0.12, 1.0)
                 buf = np.zeros(need, dtype=np.float32)
 
                 # Le tintement d'élixir précède TOUJOURS le son de la troupe
@@ -277,7 +279,12 @@ def main():
         o -= o.max(1, keepdims=True)
         p = np.exp(o); p /= p.sum(1, keepdims=True)
 
-        d = p.copy(); d[np.arange(batch), y] -= 1; d /= batch
+        # Lissage : on n'exige jamais une certitude absolue, ce qui évite
+        # que le réseau écrase tout sur une seule classe.
+        eps = 0.05
+        target = np.full_like(p, eps / (n_out - 1))
+        target[np.arange(batch), y] = 1 - eps
+        d = (p - target) / batch
         gW2 = h.T @ d; gb2 = d.sum(0)
         dh = (d @ W2.T) * (h > 0)
         gW1 = x.T @ dh; gb1 = dh.sum(0)

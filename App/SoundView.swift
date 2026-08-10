@@ -50,6 +50,12 @@ struct SoundView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
 
+            Text(SoundClassifier.selfTest())
+                .font(.caption2)
+                .foregroundStyle(.cyan)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+
             Text(SoundClassifier.isReady
                  ? "Modèle : \(SoundModel.labels.count - 1) cartes · précision \(Int(SoundModel.accuracy * 100)) %"
                  : "Modèle absent")

@@ -54,6 +54,7 @@ final class SoundAnalyzer: ObservableObject {
     private var stableElixir = -1
     private var dropStart: Date?
     private var dropFrom = 0
+    private var dropWindow: [[UInt8]] = []   // son capté au DÉBUT de la baisse
     private var dropTo = 0
     private var recentElixir: [Int] = []  // historique court, pour retrouver le pic
     private var pendingIndex: Int?
@@ -178,6 +179,9 @@ final class SoundAnalyzer: ObservableObject {
             if dropStart == nil {
                 dropStart = Date()
                 dropFrom = prevElixir
+                // Le son du déploiement est ICI, au tout début de la baisse.
+                // Une demi-seconde plus tard il est déjà passé.
+                dropWindow = Array(frames.suffix(30))
             }
             dropTo = now
             return
@@ -194,13 +198,16 @@ final class SoundAnalyzer: ObservableObject {
             // Une carte coûte au plus 9 : au-delà, c'est une erreur de lecture
             guard drop >= 1, drop <= 9 else { return }
 
-            // Le son du déploiement se trouve juste avant : on prend les
-            // dernières trames reçues, soit environ trois dixièmes de seconde.
-            let window = Array(frames.suffix(30))
+            // On réutilise l'instantané pris au début de la baisse
+            let window = dropWindow
+            dropWindow = []
             myPlays += 1
             lastMyPlayAt = Date()
             lastMyPlayDrop = drop
-            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo))"
+            let spread = variation(window)
+            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo)) · "
+                + (spread < 3 ? "SON PLAT (\(window.count) tr.)"
+                              : "son ok, relief \(Int(spread))")
 
             // C'est la BAISSE elle-même qui déclenche l'affichage.
             // Plus besoin qu'un son ait été détecté au bon moment.
@@ -221,6 +228,19 @@ final class SoundAnalyzer: ObservableObject {
             if onsets.count > 30 { onsets.removeLast() }
             LearnedSounds.shared.observeMyPlay(drop: drop, frames: window)
         }
+    }
+
+    /// Écart-type moyen des trames : proche de zéro si le son est plat.
+    private func variation(_ w: [[UInt8]]) -> Double {
+        guard !w.isEmpty else { return 0 }
+        var total = 0.0
+        for f in w {
+            guard !f.isEmpty else { continue }
+            let m = f.reduce(0.0) { $0 + Double($1) } / Double(f.count)
+            let v = f.reduce(0.0) { $0 + pow(Double($1) - m, 2) } / Double(f.count)
+            total += v.squareRoot()
+        }
+        return total / Double(w.count)
     }
 
     private func detect(level: Double, myElixir: Int) {
@@ -273,6 +293,7 @@ final class SoundAnalyzer: ObservableObject {
         stableElixir = -1
         rawElixir.removeAll()
         dropStart = nil
+        dropWindow = []
         lastMyPlayAt = .distantPast
         capturing = false
         capture.removeAll()

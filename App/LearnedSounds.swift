@@ -100,6 +100,33 @@ final class LearnedSounds: ObservableObject {
         save()
     }
 
+
+    /// Mesure décisive : une carte est reconnaissable si ses exemples se
+    /// ressemblent PLUS entre eux qu'ils ne ressemblent aux autres cartes.
+    /// Retourne la ressemblance interne, la confusion maximale, et avec qui.
+    func separation(for id: String) -> (own: Double, other: Double, with: String)? {
+        guard let mine = store[id], mine.count >= 2 else { return nil }
+
+        var own = 0.0, n = 0.0
+        for i in 0..<mine.count {
+            for j in (i + 1)..<mine.count {
+                own += correlation(mine[i], mine[j]); n += 1
+            }
+        }
+        guard n > 0 else { return nil }
+        own = (own / n + 1) / 2
+
+        var worst = -1.0, worstId = ""
+        for (other, examples) in store where other != id {
+            var best = -2.0
+            for a in mine { for b in examples { best = max(best, correlation(a, b)) } }
+            let v = (best + 1) / 2
+            if v > worst { worst = v; worstId = other }
+        }
+        let name = CardCatalog.all.first { $0.id == worstId }?.name ?? "—"
+        return (max(0, min(1, own)), max(0, min(1, worst)), name)
+    }
+
     /// Supprime un exemple précis d'une carte.
     func remove(_ id: String, at index: Int) {
         guard var list = store[id], index < list.count else { return }

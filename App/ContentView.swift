@@ -5,6 +5,7 @@ struct ContentView: View {
     @EnvironmentObject var engine: ElixirEngine
     @State private var showDiag = false
     @State private var showSound = false
+    @State private var showLearn = false
 
     private let costs = [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
@@ -70,6 +71,17 @@ struct ContentView: View {
                 .padding(.horizontal, 24)
 
                 Button {
+                    showLearn = true
+                } label: {
+                    Label("Apprendre les sons", systemImage: "graduationcap.fill")
+                        .font(.subheadline.weight(.medium))
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(Color.green.opacity(0.18))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 24)
+
+                Button {
                     showSound = true
                 } label: {
                     Label("Analyse sonore", systemImage: "waveform")
@@ -87,6 +99,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showDiag) { DiagnosticView() }
         .sheet(isPresented: $showSound) { SoundView() }
+        .sheet(isPresented: $showLearn) { LearnView() }
     }
 }
 

@@ -89,11 +89,11 @@ final class LearnedSounds: ObservableObject {
     func count(for id: String) -> Int { store[id]?.count ?? 0 }
 
     func add(_ frames: [[UInt8]], for card: Card) {
-        guard frames.count >= 20 else {
+        guard frames.count >= 8 else {
             lastMessage = "Trop court, ignoré"
             return
         }
-        let clipped = Array(frames.suffix(40))
+        let clipped = frames
         store[card.id, default: []].append(clipped)
         if store[card.id]!.count > 8 { store[card.id]!.removeFirst() }
         lastMessage = "\(card.name) : \(store[card.id]!.count) exemple(s)"
@@ -197,19 +197,31 @@ final class LearnedSounds: ObservableObject {
         }
         guard !clean.isEmpty else { return window }
 
-        // Pic global de la fenêtre entière
-        var peak = -200.0
-        for row in clean { for v in row { peak = max(peak, v) } }
+        // Le son le PLUS FORT de la fenêtre est le tintement d'élixir :
+        // il précède chaque pose et il est rigoureusement identique.
+        // Il détourne la normalisation et écrase le son de la carte.
+        // On le repère, puis on coupe la fenêtre juste après lui.
+        var chime = 0, chimeLevel = -300.0
+        for (i, row) in clean.enumerated() {
+            let m = row.max() ?? -200
+            if m > chimeLevel { chimeLevel = m; chime = i }
+        }
+
+        // On garde 24 tranches (≈ 0,28 s) à partir de 5 tranches après le pic
+        let start = min(clean.count - 1, chime + 5)
+        var tail = Array(clean[start...])
+        if tail.count > 24 { tail = Array(tail.prefix(24)) }
+        guard tail.count >= 8 else { return window }
+
+        // Normalisation sur le pic de CE QUI RESTE : la référence est
+        // désormais le son de la carte, plus le tintement.
+        var peak = -300.0
+        for row in tail { for v in row { peak = max(peak, v) } }
         guard peak > -100 else { return window }
 
-        // Porte de bruit : une tranche 35 dB sous le pic est mise à zéro
+        // Plus de porte de bruit : elle effaçait justement le signal utile.
         var out: [[UInt8]] = []
-        for row in clean {
-            let rowPeak = row.max() ?? -200
-            if rowPeak < peak - 35 {
-                out.append([UInt8](repeating: 0, count: bands))
-                continue
-            }
+        for row in tail {
             out.append(row.map { d in
                 UInt8(max(0, min(255, Int((d - peak + 48) / 48 * 255))))
             })
@@ -227,8 +239,8 @@ final class LearnedSounds: ObservableObject {
 
     /// Compare aux exemples appris. Retourne la carte la plus ressemblante.
     func recognise(_ frames: [[UInt8]]) -> Hit? {
-        guard isUsable, frames.count >= 20 else { return nil }
-        let probe = Array(frames.suffix(40))
+        guard isUsable, frames.count >= 8 else { return nil }
+        let probe = frames
 
         var best: (String, Double) = ("", -2)
         var second: (String, Double) = ("", -2)
@@ -267,11 +279,11 @@ final class LearnedSounds: ObservableObject {
         // La baisse d'élixir est détectée avec un retard variable : le son
         // peut se trouver décalé d'une dizaine de trames d'un enregistrement
         // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
-        for shift in -12...12 {
+        for shift in -6...6 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)
-            guard n >= 16 else { continue }
+            guard n >= 12 else { continue }
 
             var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
             for i in 0..<n {

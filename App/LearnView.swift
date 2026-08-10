@@ -5,6 +5,7 @@ import SwiftUI
 struct LearnView: View {
     @ObservedObject private var learned = LearnedSounds.shared
     @ObservedObject private var capture = CaptureBridge.shared
+    @ObservedObject private var sound = SoundAnalyzer.shared
     @State private var search = ""
 
     private var results: [Card] {
@@ -43,6 +44,63 @@ struct LearnView: View {
             } else {
                 Text("Choisis une carte, puis pose-la en jeu")
                     .font(.caption).foregroundStyle(.secondary)
+            }
+
+            // Enregistrement manuel : le plus fiable
+            if let t = learned.target {
+                let age = Date().timeIntervalSince(sound.lastCaptureAt)
+                Button {
+                    if sound.lastCapture.count >= 20 {
+                        learned.add(sound.lastCapture, for: t)
+                    } else {
+                        learned.lastMessage = "Aucune impulsion récente"
+                    }
+                } label: {
+                    VStack(spacing: 2) {
+                        Text("Enregistrer la dernière impulsion")
+                            .font(.subheadline.weight(.semibold))
+                        Text(sound.lastCapture.isEmpty ? "aucune"
+                             : String(format: "il y a %.1f s", age))
+                            .font(.caption2)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 52)
+                    .background(age < 5 ? Color.blue.opacity(0.25)
+                                        : Color.gray.opacity(0.15))
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                .padding(.horizontal, 20)
+
+                // Exemples déjà enregistrés pour cette carte
+                if learned.count(for: t.id) > 0 {
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text("Exemples enregistrés — supprime ceux dont la cohérence est basse")
+                            .font(.caption2).foregroundStyle(.secondary)
+                        ForEach(0..<learned.count(for: t.id), id: \.self) { i in
+                            HStack(spacing: 10) {
+                                Text("#\(i + 1)").font(.caption.monospaced())
+                                if let c = learned.consistency(t.id, at: i) {
+                                    Text("cohérence \(Int(c * 100)) %")
+                                        .font(.caption)
+                                        .foregroundStyle(c > 0.75 ? .green
+                                                         : (c > 0.55 ? .orange : .red))
+                                } else {
+                                    Text("—").font(.caption).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Button {
+                                    learned.remove(t.id, at: i)
+                                } label: {
+                                    Image(systemName: "trash")
+                                        .foregroundStyle(.red)
+                                }
+                            }
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Color.gray.opacity(0.10))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                }
             }
 
             Text(learned.lastMessage)

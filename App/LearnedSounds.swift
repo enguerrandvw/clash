@@ -36,6 +36,27 @@ final class LearnedSounds: ObservableObject {
         save()
     }
 
+    /// Supprime un exemple précis d'une carte.
+    func remove(_ id: String, at index: Int) {
+        guard var list = store[id], index < list.count else { return }
+        list.remove(at: index)
+        if list.isEmpty { store.removeValue(forKey: id) } else { store[id] = list }
+        save()
+    }
+
+    /// Cohérence d'un exemple avec les autres de la même carte.
+    /// Un enregistrement parasité ressort avec un score bas.
+    func consistency(_ id: String, at index: Int) -> Double? {
+        guard let list = store[id], list.count >= 2, index < list.count else { return nil }
+        var total = 0.0, n = 0.0
+        for (k, other) in list.enumerated() where k != index {
+            total += correlation(list[index], other)
+            n += 1
+        }
+        guard n > 0 else { return nil }
+        return max(0, min(1, (total / n + 1) / 2))
+    }
+
     func forget(_ id: String) {
         store.removeValue(forKey: id)
         save()
@@ -89,7 +110,7 @@ final class LearnedSounds: ObservableObject {
 
     /// Corrélation entre deux séquences de trames, avec un léger décalage
     /// temporel toléré dans les deux sens.
-    private func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
+    func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         var best = -2.0
         for shift in -2...2 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a

@@ -74,7 +74,6 @@ final class SoundAnalyzer: ObservableObject {
 
             recentElixir.append(myElixir)
             if recentElixir.count > 20 { recentElixir.removeFirst() }
-            watchElixir(myElixir)
 
             detect(level: lvl, myElixir: myElixir)
 
@@ -139,6 +138,9 @@ final class SoundAnalyzer: ObservableObject {
 
     /// Surveille TA barre. Une baisse ne peut venir que d'une carte posée
     /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
+    /// Appelé à chaque paquet reçu, que l'audio ait bougé ou non.
+    func observeElixir(_ raw: Int) { watchElixir(raw) }
+
     private func watchElixir(_ raw: Int) {
         guard raw >= 0 else { return }
 

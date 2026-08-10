@@ -90,7 +90,7 @@ final class LearnedSounds: ObservableObject {
             lastMessage = "Trop court, ignoré"
             return
         }
-        let clipped = Array(frames.prefix(26))
+        let clipped = Array(frames.suffix(40))
         store[card.id, default: []].append(clipped)
         if store[card.id]!.count > 8 { store[card.id]!.removeFirst() }
         lastMessage = "\(card.name) : \(store[card.id]!.count) exemple(s)"
@@ -139,7 +139,7 @@ final class LearnedSounds: ObservableObject {
     /// Compare aux exemples appris. Retourne la carte la plus ressemblante.
     func recognise(_ frames: [[UInt8]]) -> Hit? {
         guard isUsable, frames.count >= 20 else { return nil }
-        let probe = Array(frames.prefix(26))
+        let probe = Array(frames.suffix(40))
 
         var best: (String, Double) = ("", -2)
         var second: (String, Double) = ("", -2)
@@ -173,11 +173,14 @@ final class LearnedSounds: ObservableObject {
     /// temporel toléré dans les deux sens.
     func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         var best = -2.0
-        for shift in -2...2 {
+        // La baisse d'élixir est détectée avec un retard variable : le son
+        // peut se trouver décalé d'une dizaine de trames d'un enregistrement
+        // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
+        for shift in -12...12 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)
-            guard n >= 12 else { continue }
+            guard n >= 14 else { continue }
 
             var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
             for i in 0..<n {

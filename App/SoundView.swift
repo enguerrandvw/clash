@@ -43,6 +43,9 @@ struct SoundView: View {
 
             Divider()
 
+            Text(capture.audioFormat)
+                .font(.caption2).foregroundStyle(.secondary)
+
             Text("Bandes reçues : \(sound.bandsSeen) · attendu \(SoundModel.bands)"
                  + "  ·  analyses \(sound.classifyOK) / refusées \(sound.classifyFail)")
                 .font(.caption2)

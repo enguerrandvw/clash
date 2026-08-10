@@ -32,6 +32,8 @@ final class SoundAnalyzer: ObservableObject {
     @Published var lastCapture: [[UInt8]] = []
     @Published var lastCaptureAt = Date.distantPast
 
+    @Published var myPlays = 0
+    @Published var lastPlayInfo = "—"
     @Published var bandsSeen = 0
     @Published var classifyOK = 0
     @Published var classifyFail = 0
@@ -43,7 +45,11 @@ final class SoundAnalyzer: ObservableObject {
     private var lastOnset = Date.distantPast
     private var pendingOnset: Onset?
     private var levelHistory: [Double] = []
-    private var elixirBeforeMax = -1      // élixir le plus haut juste avant l'impulsion
+    // Suivi direct de TA barre d'élixir : c'est elle qui dit que tu as posé.
+    private var prevElixir = -1
+    private var dropStart: Date?
+    private var dropFrom = 0
+    private var dropTo = 0
     private var recentElixir: [Int] = []  // historique court, pour retrouver le pic
     private var pendingIndex: Int?
     private var capturing = false
@@ -66,6 +72,7 @@ final class SoundAnalyzer: ObservableObject {
 
             recentElixir.append(myElixir)
             if recentElixir.count > 20 { recentElixir.removeFirst() }
+            watchElixir(myElixir)
 
             detect(level: lvl, myElixir: myElixir)
 
@@ -99,11 +106,6 @@ final class SoundAnalyzer: ObservableObject {
             // Mode apprentissage : si une carte est sélectionnée et que TON
             // élixir a baissé du bon montant, on enregistre l'empreinte.
             let learn = LearnedSounds.shared
-            if drop >= 1 {
-                // C'est TOI qui as posé : l'app déduit la carte à partir
-                // de ton deck et du coût constaté.
-                learn.observeMyPlay(drop: drop, frames: capture)
-            }
 
             let r = p.result
             // Priorité aux sons appris sur l'appareil : même chaîne de calcul
@@ -130,6 +132,38 @@ final class SoundAnalyzer: ObservableObject {
             if onsets.count > 30 { onsets.removeLast() }
             pendingOnset = nil
             pendingIndex = nil
+        }
+    }
+
+    /// Surveille TA barre. Une baisse ne peut venir que d'une carte posée
+    /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
+    private func watchElixir(_ now: Int) {
+        defer { prevElixir = now }
+        guard now >= 0 else { return }
+        guard prevElixir >= 0 else { return }
+
+        if now < prevElixir {
+            // La baisse commence, ou se poursuit sur plusieurs mesures
+            if dropStart == nil {
+                dropStart = Date()
+                dropFrom = prevElixir
+            }
+            dropTo = now
+            return
+        }
+
+        // Plus de baisse : on clôture après un court délai de stabilisation
+        if let start = dropStart, Date().timeIntervalSince(start) > 0.35 {
+            let drop = dropFrom - dropTo
+            dropStart = nil
+            guard drop >= 1 else { return }
+
+            // Le son du déploiement se trouve juste avant : on prend les
+            // dernières trames reçues, soit environ trois dixièmes de seconde.
+            let window = Array(frames.suffix(30))
+            myPlays += 1
+            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo))"
+            LearnedSounds.shared.observeMyPlay(drop: drop, frames: window)
         }
     }
 
@@ -179,6 +213,8 @@ final class SoundAnalyzer: ObservableObject {
         pendingIndex = nil
         levelHistory.removeAll()
         recentElixir.removeAll()
+        prevElixir = -1
+        dropStart = nil
         capturing = false
         capture.removeAll()
     }

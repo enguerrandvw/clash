@@ -181,7 +181,8 @@ final class SoundAnalyzer: ObservableObject {
                 dropFrom = prevElixir
                 // Le son du déploiement est ICI, au tout début de la baisse.
                 // Une demi-seconde plus tard il est déjà passé.
-                dropWindow = Array(frames.suffix(30))
+                // Fenêtre large : le son peut arriver avec un retard variable
+                dropWindow = Array(frames.suffix(40))
             }
             dropTo = now
             return

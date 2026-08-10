@@ -216,8 +216,13 @@ class SampleHandler: RPBroadcastSampleHandler {
         else { return 0 }
 
         let isFloat = (asbd.mFormatFlags & kAudioFormatFlagIsFloat) != 0
+        // Canaux séparés ou entrelacés : ça change complètement la façon
+        // de parcourir les échantillons.
+        let nonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
         audioFormat = (isFloat ? "float" : "int") + "\(asbd.mBitsPerChannel)"
-            + " \(Int(asbd.mSampleRate))Hz"
+            + " \(Int(asbd.mSampleRate))Hz "
+            + "\(asbd.mChannelsPerFrame)ch "
+            + (nonInterleaved ? "séparés" : "entrelacés")
 
         var block: CMBlockBuffer?
         var abl = AudioBufferList()
@@ -246,14 +251,18 @@ class SampleHandler: RPBroadcastSampleHandler {
             guard n > 0 else { return 0 }
             let p = data.assumingMemoryBound(to: Int16.self)
             var m: Int32 = 0
-            for i in stride(from: 0, to: n, by: 4) { m = max(m, abs(Int32(p[i]))) }
+            for i in stride(from: 0, to: n, by: 2) { m = max(m, abs(Int32(p[i]))) }
             peak = Float(m) / Float(Int16.max)
 
-            // On empile les échantillons en mono pour l'analyse spectrale
+            // On empile les échantillons pour l'analyse spectrale.
+            // En canaux SÉPARÉS, ce tampon ne contient déjà qu'un seul canal :
+            // il ne faut surtout pas sauter d'échantillons, sinon la fréquence
+            // d'échantillonnage est divisée par deux et tout le spectre se décale.
+            let step = nonInterleaved ? 1 : channels
             var i = 0
             while i < n {
                 pending.append(Float(p[i]) / 32768.0)
-                i += channels
+                i += step
             }
             analysePending()
         }

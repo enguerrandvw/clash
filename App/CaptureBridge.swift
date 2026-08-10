@@ -94,6 +94,10 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    // La barre est surveillée à chaque paquet, indépendamment
+                    // de l'audio : une baisse ne doit jamais passer inaperçue.
+                    SoundAnalyzer.shared.observeElixir(self.myElixir)
+
                     if let spec = j["spec"] as? String, !spec.isEmpty,
                        let raw = Data(base64Encoded: spec) {
                         let lev = (j["lev"] as? String).flatMap { Data(base64Encoded: $0) }

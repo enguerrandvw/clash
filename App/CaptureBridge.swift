@@ -94,10 +94,16 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
-                    // La barre est surveillée à chaque paquet, indépendamment
-                    // de l'audio : une baisse ne doit jamais passer inaperçue.
-                    SoundAnalyzer.shared.observeElixir(self.myElixir)
 
+                    // L'élixir doit être calculé AVANT d'être surveillé,
+                    // sinon la détection travaille sur le paquet précédent.
+                    let bandVals = j["band"] as? [Int] ?? []
+                    let filled = bandVals.filter { $0 > 18 }.count
+                    self.myElixir = bandVals.isEmpty ? -1 : filled
+
+                    // Une baisse de TA barre ne doit jamais passer inaperçue :
+                    // on la surveille à chaque paquet, même sans audio.
+                    SoundAnalyzer.shared.observeElixir(self.myElixir)
                     if let spec = j["spec"] as? String, !spec.isEmpty,
                        let raw = Data(base64Encoded: spec) {
                         let lev = (j["lev"] as? String).flatMap { Data(base64Encoded: $0) }
@@ -110,9 +116,6 @@ final class CaptureBridge: ObservableObject {
                        let raw = Data(base64Encoded: b64), raw.count == 640 {
                         self.digitImage = CaptureBridge.grayImage(raw, w: 32, h: 20)
                     }
-                    // Un segment est considéré rempli si sa couleur est vive
-                    let filled = (j["band"] as? [Int] ?? []).filter { $0 > 18 }.count
-                    self.myElixir = (j["band"] as? [Int] ?? []).isEmpty ? -1 : filled
                     self.bestRowFrac  = j["bestRowFrac"] as? Double ?? 0
                     self.pixelFormat  = j["pixelFormat"] as? String ?? "?"
                     self.audioFormat  = j["audioFormat"] as? String ?? "?"

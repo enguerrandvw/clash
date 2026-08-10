@@ -16,6 +16,7 @@ final class SoundAnalyzer: ObservableObject {
         var myElixirAfter: Int
         var attribution: String  // "moi", "adverse", ou "?"
         var result: SoundClassifier.Result?
+        var extra = ""
     }
 
     @Published var frames: [[UInt8]] = []      // spectres récents
@@ -79,12 +80,33 @@ final class SoundAnalyzer: ObservableObject {
             }
             capturing = false
 
+            // Mode apprentissage : si une carte est sélectionnée et que TON
+            // élixir a baissé du bon montant, on enregistre l'empreinte.
+            let learn = LearnedSounds.shared
+            if let t = learn.target, drop >= 1 {
+                if abs(drop - t.cost) <= 1 {
+                    learn.add(capture, for: t)
+                } else {
+                    learn.lastMessage = "Baisse de \(drop) au lieu de \(t.cost) — ignoré"
+                }
+            }
+
             let r = p.result
-            let sure = (r?.confidence ?? 0) >= minScore && !(r?.isBackground ?? true)
-            let name = sure
-                ? (r?.card?.name ?? (r?.label ?? "?").replacingOccurrences(of: "_", with: " "))
-                : ((r?.isBackground ?? false) ? "bruit" : "?")
-            let pct = Int((r?.confidence ?? 0) * 100)
+            // Priorité aux sons appris sur l'appareil : même chaîne de calcul
+            // à l'apprentissage et à la reconnaissance, donc pas d'écart possible.
+            var name = "?"
+            var pct = 0
+            if let hit = learn.recognise(capture) {
+                pct = Int(hit.score * 100)
+                name = hit.score >= minScore ? hit.card.name : "?"
+                p.extra = hit.runnerUp
+            } else {
+                let sure = (r?.confidence ?? 0) >= minScore && !(r?.isBackground ?? true)
+                name = sure
+                    ? (r?.card?.name ?? (r?.label ?? "?").replacingOccurrences(of: "_", with: " "))
+                    : ((r?.isBackground ?? false) ? "bruit" : "?")
+                pct = Int((r?.confidence ?? 0) * 100)
+            }
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"
 

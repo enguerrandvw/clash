@@ -53,6 +53,14 @@ struct SoundView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
 
+            Text(LearnedSounds.shared.isUsable
+                 ? "Sons appris : \(LearnedSounds.shared.cardCount) cartes · \(LearnedSounds.shared.totalExamples) exemples — utilisés en priorité"
+                 : "Sons appris : \(LearnedSounds.shared.cardCount) carte(s) — il en faut au moins 2")
+                .font(.caption2)
+                .foregroundStyle(LearnedSounds.shared.isUsable ? .green : .orange)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+
             Text(SoundClassifier.selfTest())
                 .font(.caption2)
                 .foregroundStyle(.cyan)
@@ -92,7 +100,10 @@ struct SoundView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         }
-                        if let r = o.result, !r.runnersUp.isEmpty {
+                        if !o.extra.isEmpty {
+                            Text("puis " + o.extra)
+                                .font(.caption2).foregroundStyle(.secondary)
+                        } else if let r = o.result, !r.runnersUp.isEmpty {
                             Text(r.runnersUp)
                                 .font(.caption2).foregroundStyle(.secondary)
                         }

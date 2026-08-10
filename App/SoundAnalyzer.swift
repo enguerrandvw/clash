@@ -17,6 +17,7 @@ final class SoundAnalyzer: ObservableObject {
         var attribution: String  // "moi", "adverse", ou "?"
         var result: SoundClassifier.Result?
         var extra = ""
+        var elixirTrace = ""
     }
 
     @Published var frames: [[UInt8]] = []      // spectres récents
@@ -42,6 +43,8 @@ final class SoundAnalyzer: ObservableObject {
     private var lastOnset = Date.distantPast
     private var pendingOnset: Onset?
     private var levelHistory: [Double] = []
+    private var elixirBeforeMax = -1      // élixir le plus haut juste avant l'impulsion
+    private var recentElixir: [Int] = []  // historique court, pour retrouver le pic
     private var pendingIndex: Int?
     private var capturing = false
     private var capture: [[UInt8]] = []     // trames suivant l'impulsion
@@ -61,6 +64,9 @@ final class SoundAnalyzer: ObservableObject {
             levelHistory.append(lvl)
             if levelHistory.count > maxFrames { levelHistory.removeFirst() }
 
+            recentElixir.append(myElixir)
+            if recentElixir.count > 20 { recentElixir.removeFirst() }
+
             detect(level: lvl, myElixir: myElixir)
 
             // Une impulsion vient d'être repérée : on met de côté ses trames
@@ -74,7 +80,9 @@ final class SoundAnalyzer: ObservableObject {
         if var p = pendingOnset, Date().timeIntervalSince(p.at) > 0.75,
            pendingIndex != nil {
 
-            p.myElixirAfter = myElixir
+            // La barre remonte pendant les 0,75 s d'attente : on retient
+            // le point le plus bas atteint, pas la valeur du moment.
+            p.myElixirAfter = min(myElixir, recentElixir.suffix(12).min() ?? myElixir)
             let drop = p.myElixirBefore - p.myElixirAfter
 
             // Les trames collectées après l'impulsion forment sa signature
@@ -115,6 +123,7 @@ final class SoundAnalyzer: ObservableObject {
             }
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"
+            p.elixirTrace = "élixir \(p.myElixirBefore) → \(p.myElixirAfter)"
 
             onPulse?(p.attribution)
             onsets.insert(p, at: 0)
@@ -157,8 +166,9 @@ final class SoundAnalyzer: ObservableObject {
             background = []
         }
         pendingIndex = 0
+        let before = max(myElixir, recentElixir.suffix(8).max() ?? myElixir)
         pendingOnset = Onset(at: now, strength: jump, signature: [],
-                             myElixirBefore: myElixir, myElixirAfter: myElixir,
+                             myElixirBefore: before, myElixirAfter: myElixir,
                              attribution: "…", result: nil)
     }
 
@@ -168,6 +178,7 @@ final class SoundAnalyzer: ObservableObject {
         pendingOnset = nil
         pendingIndex = nil
         levelHistory.removeAll()
+        recentElixir.removeAll()
         capturing = false
         capture.removeAll()
     }

@@ -26,6 +26,52 @@ enum SoundClassifier {
         return map
     }()
 
+    /// Classe un vecteur déjà normalisé. Sert à l'auto-test.
+    static func forward(_ x: [Float]) -> (Int, Double) {
+        let h = SoundModel.hidden
+        var hid = [Float](repeating: 0, count: h)
+        for j in 0..<h {
+            var s = SoundModel.b1[j]
+            for i in 0..<x.count { s += x[i] * SoundModel.w1[i * h + j] }
+            hid[j] = max(0, s)
+        }
+        let n = SoundModel.labels.count
+        var out = [Float](repeating: 0, count: n)
+        for k in 0..<n {
+            var s = SoundModel.b2[k]
+            for j in 0..<h { s += hid[j] * SoundModel.w2[j * n + k] }
+            out[k] = s
+        }
+        let mx = out.max() ?? 0
+        var e = out.map { expf($0 - mx) }
+        let sum = e.reduce(0, +)
+        if sum > 0 { for i in 0..<n { e[i] /= sum } }
+        var best = 0
+        for i in 1..<n where e[i] > e[best] { best = i }
+        return (best, Double(e[best]))
+    }
+
+    /// Soumet au réseau des exemples dont on connaît la réponse.
+    /// S'il échoue ici, le défaut est dans ce fichier ; sinon, dans la capture.
+    static func selfTest() -> String {
+        let d = SoundModel.inputDim
+        guard isReady, SoundModel.probes.count >= d,
+              !SoundModel.probeLabels.isEmpty else { return "pas de témoins" }
+
+        var ok = 0, detail = ""
+        for (k, expected) in SoundModel.probeLabels.enumerated() {
+            let start = k * d
+            guard start + d <= SoundModel.probes.count else { break }
+            let x = Array(SoundModel.probes[start..<(start + d)])
+            let (got, conf) = forward(x)
+            if got == expected { ok += 1 }
+            else {
+                detail += "\n\(SoundModel.labels[expected]) → \(SoundModel.labels[got]) \(Int(conf * 100))%"
+            }
+        }
+        return "Inférence : \(ok)/\(SoundModel.probeLabels.count) témoins corrects" + detail
+    }
+
     /// `frames` : les trames captées (26 × 32 valeurs de 0 à 255).
     static func classify(_ frames: [[UInt8]]) -> Result? {
         guard isReady else { return nil }

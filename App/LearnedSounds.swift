@@ -131,6 +131,65 @@ final class LearnedSounds: ObservableObject {
         save()
     }
 
+
+    // MARK: - Traitement du signal
+
+    /// Convertit une valeur transmise (0-255) en décibels absolus.
+    private static func toDb(_ v: UInt8) -> Double {
+        Double(v) / 255.0 * 100.0 - 80.0
+    }
+
+    /// Prépare une fenêtre pour la comparaison :
+    /// 1. soustraction de l'ambiance mesurée juste avant,
+    /// 2. porte de bruit sur les tranches trop faibles,
+    /// 3. normalisation sur le pic de TOUTE la fenêtre, ce qui préserve
+    ///    l'enveloppe du son — l'attaque puis le déclin.
+    static func process(window: [[UInt8]], ambience: [[UInt8]]) -> [[UInt8]] {
+        guard let bands = window.first?.count, bands > 0, !window.isEmpty
+        else { return window }
+
+        // Profil de l'ambiance, en puissance linéaire
+        var ambPower = [Double](repeating: 0, count: bands)
+        let amb = ambience.filter { $0.count == bands }
+        if !amb.isEmpty {
+            for f in amb {
+                for b in 0..<bands { ambPower[b] += pow(10, toDb(f[b]) / 10) }
+            }
+            for b in 0..<bands { ambPower[b] /= Double(amb.count) }
+        }
+
+        // Soustraction, puis retour en décibels
+        var clean: [[Double]] = []
+        for f in window where f.count == bands {
+            var row = [Double](repeating: -80, count: bands)
+            for b in 0..<bands {
+                let p = pow(10, toDb(f[b]) / 10) - ambPower[b]
+                row[b] = p > 1e-9 ? 10 * log10(p) : -80
+            }
+            clean.append(row)
+        }
+        guard !clean.isEmpty else { return window }
+
+        // Pic global de la fenêtre entière
+        var peak = -200.0
+        for row in clean { for v in row { peak = max(peak, v) } }
+        guard peak > -100 else { return window }
+
+        // Porte de bruit : une tranche 35 dB sous le pic est mise à zéro
+        var out: [[UInt8]] = []
+        for row in clean {
+            let rowPeak = row.max() ?? -200
+            if rowPeak < peak - 35 {
+                out.append([UInt8](repeating: 0, count: bands))
+                continue
+            }
+            out.append(row.map { d in
+                UInt8(max(0, min(255, Int((d - peak + 48) / 48 * 255))))
+            })
+        }
+        return out
+    }
+
     // MARK: - Reconnaissance par plus proche voisin
 
     struct Hit {
@@ -174,39 +233,18 @@ final class LearnedSounds: ObservableObject {
 
     /// Corrélation entre deux séquences de trames, avec un léger décalage
     /// temporel toléré dans les deux sens.
-    /// Repere la trame la plus mouvementee : c'est la qu'est le son.
-    private func peakFrame(_ w: [[UInt8]]) -> Int {
-        var bestIdx = 0, bestVar = -1.0
-        for (i, f) in w.enumerated() where !f.isEmpty {
-            let m = f.reduce(0.0) { $0 + Double($1) } / Double(f.count)
-            var v = 0.0
-            for x in f { v += (Double(x) - m) * (Double(x) - m) }
-            v /= Double(f.count)
-            if v > bestVar { bestVar = v; bestIdx = i }
-        }
-        return bestIdx
-    }
-
-    /// Extrait 16 trames centrees sur la partie active : on compare ainsi
-    /// les sons entre eux, et non les ambiances qui les entourent.
-    private func core(_ w: [[UInt8]]) -> [[UInt8]] {
-        guard w.count > 16 else { return w }
-        let p = peakFrame(w)
-        let start = max(0, min(w.count - 16, p - 3))
-        return Array(w[start..<(start + 16)])
-    }
-
-    func correlation(_ raw1: [[UInt8]], _ raw2: [[UInt8]]) -> Double {
-        let a = core(raw1), b = core(raw2)
+    /// Corrélation sur la séquence chronologique COMPLÈTE : c'est
+    /// l'évolution des bandes dans le temps qui identifie une carte.
+    func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         var best = -2.0
         // La baisse d'élixir est détectée avec un retard variable : le son
         // peut se trouver décalé d'une dizaine de trames d'un enregistrement
         // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
-        for shift in -4...4 {
+        for shift in -12...12 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)
-            guard n >= 10 else { continue }
+            guard n >= 16 else { continue }
 
             var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
             for i in 0..<n {

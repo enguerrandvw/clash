@@ -55,7 +55,10 @@ final class LearnedSounds: ObservableObject {
     /// Appelé quand TON élixir a baissé : on déduit la carte si possible.
     func observeMyPlay(drop: Int, frames: [[UInt8]]) {
         guard drop >= 1, frames.count >= 20 else { return }
-        let cands = myDeck.filter { abs($0.cost - drop) <= 1 }
+        // Coût exact d'abord : une baisse de 2 ne peut etre que La Buche.
+        // On n'elargit que si rien ne correspond exactement.
+        var cands = myDeck.filter { $0.cost == drop }
+        if cands.isEmpty { cands = myDeck.filter { abs($0.cost - drop) == 1 } }
 
         if cands.count == 1 {
             add(frames, for: cands[0])
@@ -171,16 +174,39 @@ final class LearnedSounds: ObservableObject {
 
     /// Corrélation entre deux séquences de trames, avec un léger décalage
     /// temporel toléré dans les deux sens.
-    func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
+    /// Repere la trame la plus mouvementee : c'est la qu'est le son.
+    private func peakFrame(_ w: [[UInt8]]) -> Int {
+        var bestIdx = 0, bestVar = -1.0
+        for (i, f) in w.enumerated() where !f.isEmpty {
+            let m = f.reduce(0.0) { $0 + Double($1) } / Double(f.count)
+            var v = 0.0
+            for x in f { v += (Double(x) - m) * (Double(x) - m) }
+            v /= Double(f.count)
+            if v > bestVar { bestVar = v; bestIdx = i }
+        }
+        return bestIdx
+    }
+
+    /// Extrait 16 trames centrees sur la partie active : on compare ainsi
+    /// les sons entre eux, et non les ambiances qui les entourent.
+    private func core(_ w: [[UInt8]]) -> [[UInt8]] {
+        guard w.count > 16 else { return w }
+        let p = peakFrame(w)
+        let start = max(0, min(w.count - 16, p - 3))
+        return Array(w[start..<(start + 16)])
+    }
+
+    func correlation(_ raw1: [[UInt8]], _ raw2: [[UInt8]]) -> Double {
+        let a = core(raw1), b = core(raw2)
         var best = -2.0
         // La baisse d'élixir est détectée avec un retard variable : le son
         // peut se trouver décalé d'une dizaine de trames d'un enregistrement
         // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
-        for shift in -12...12 {
+        for shift in -4...4 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)
-            guard n >= 14 else { continue }
+            guard n >= 10 else { continue }
 
             var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
             for i in 0..<n {

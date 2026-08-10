@@ -33,6 +33,9 @@ final class SoundAnalyzer: ObservableObject {
     @Published var lastCaptureAt = Date.distantPast
 
     @Published var myPlays = 0
+    /// Dernière baisse d'élixir constatée : sert aussi à attribuer les impulsions
+    private var lastMyPlayAt = Date.distantPast
+    private var lastMyPlayDrop = 0
     @Published var lastPlayInfo = "—"
     @Published var bandsSeen = 0
     @Published var classifyOK = 0
@@ -91,7 +94,11 @@ final class SoundAnalyzer: ObservableObject {
             // La barre remonte pendant les 0,75 s d'attente : on retient
             // le point le plus bas atteint, pas la valeur du moment.
             p.myElixirAfter = min(myElixir, recentElixir.suffix(12).min() ?? myElixir)
-            let drop = p.myElixirBefore - p.myElixirAfter
+
+            // Une seule source de vérité : la baisse détectée sur ta barre.
+            // Si elle date de moins de 2 s, cette impulsion est la tienne.
+            let recent = Date().timeIntervalSince(lastMyPlayAt) < 2.0
+            let drop = recent ? lastMyPlayDrop : 0
 
             // Les trames collectées après l'impulsion forment sa signature
             if capture.count >= 12 {
@@ -126,7 +133,9 @@ final class SoundAnalyzer: ObservableObject {
             }
             p.attribution = (drop >= 1 ? "moi (-\(drop)) " : "adverse ")
                 + "· \(name) \(pct)%"
-            p.elixirTrace = "élixir \(p.myElixirBefore) → \(p.myElixirAfter)"
+            p.elixirTrace = recent
+                ? "ta carte · −\(lastMyPlayDrop) élixir"
+                : "aucune baisse de ton élixir → adverse"
 
             onPulse?(p.attribution)
             onsets.insert(p, at: 0)
@@ -189,7 +198,27 @@ final class SoundAnalyzer: ObservableObject {
             // dernières trames reçues, soit environ trois dixièmes de seconde.
             let window = Array(frames.suffix(30))
             myPlays += 1
+            lastMyPlayAt = Date()
+            lastMyPlayDrop = drop
             lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo))"
+
+            // C'est la BAISSE elle-même qui déclenche l'affichage.
+            // Plus besoin qu'un son ait été détecté au bon moment.
+            let tag = "moi · carte à \(drop) élixir"
+            onPulse?(tag)
+
+            var entry = Onset(at: Date(), strength: 0, signature: [],
+                              myElixirBefore: dropFrom, myElixirAfter: dropTo,
+                              attribution: tag, result: nil)
+            entry.elixirTrace = "ton élixir \(dropFrom) → \(dropTo)"
+
+            // Si un son exploitable vient de passer, on l'identifie au passage
+            if window.count >= 20, let hit = LearnedSounds.shared.recognise(window) {
+                entry.attribution = tag + " · \(hit.card.name) \(Int(hit.score * 100))%"
+                entry.extra = hit.runnerUp
+            }
+            onsets.insert(entry, at: 0)
+            if onsets.count > 30 { onsets.removeLast() }
             LearnedSounds.shared.observeMyPlay(drop: drop, frames: window)
         }
     }
@@ -244,6 +273,7 @@ final class SoundAnalyzer: ObservableObject {
         stableElixir = -1
         rawElixir.removeAll()
         dropStart = nil
+        lastMyPlayAt = .distantPast
         capturing = false
         capture.removeAll()
     }

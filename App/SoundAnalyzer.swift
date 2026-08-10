@@ -26,6 +26,11 @@ final class SoundAnalyzer: ObservableObject {
     @Published var minScore: Double = 0.55     // en dessous, on n'affirme rien
 
     // Diagnostic : ce que l'extension envoie réellement
+    /// Dernière impulsion captée, quelle qu'en soit l'origine.
+    /// Sert à l'enregistrement manuel : tu poses, puis tu enregistres.
+    @Published var lastCapture: [[UInt8]] = []
+    @Published var lastCaptureAt = Date.distantPast
+
     @Published var bandsSeen = 0
     @Published var classifyOK = 0
     @Published var classifyFail = 0
@@ -80,11 +85,14 @@ final class SoundAnalyzer: ObservableObject {
             }
             capturing = false
 
+            lastCapture = capture
+            lastCaptureAt = Date()
+
             // Mode apprentissage : si une carte est sélectionnée et que TON
             // élixir a baissé du bon montant, on enregistre l'empreinte.
             let learn = LearnedSounds.shared
             if let t = learn.target, drop >= 1 {
-                if abs(drop - t.cost) <= 1 {
+                if abs(drop - t.cost) <= 2 {
                     learn.add(capture, for: t)
                 } else {
                     learn.lastMessage = "Baisse de \(drop) au lieu de \(t.cost) — ignoré"

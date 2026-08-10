@@ -47,6 +47,8 @@ final class SoundAnalyzer: ObservableObject {
     private var levelHistory: [Double] = []
     // Suivi direct de TA barre d'élixir : c'est elle qui dit que tu as posé.
     private var prevElixir = -1
+    private var rawElixir: [Int] = []     // lectures brutes, avant stabilisation
+    private var stableElixir = -1
     private var dropStart: Date?
     private var dropFrom = 0
     private var dropTo = 0
@@ -137,10 +139,28 @@ final class SoundAnalyzer: ObservableObject {
 
     /// Surveille TA barre. Une baisse ne peut venir que d'une carte posée
     /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
-    private func watchElixir(_ now: Int) {
+    private func watchElixir(_ raw: Int) {
+        guard raw >= 0 else { return }
+
+        // La barre se remplit en continu : le dernier segment franchit sans
+        // cesse le seuil de détection. On n'accepte donc une nouvelle valeur
+        // que si elle est confirmée par deux lectures sur les trois dernières.
+        rawElixir.append(raw)
+        if rawElixir.count > 3 { rawElixir.removeFirst() }
+        guard rawElixir.count == 3 else { return }
+
+        var counts: [Int: Int] = [:]
+        for v in rawElixir { counts[v, default: 0] += 1 }
+        guard let confirmed = counts.first(where: { $0.value >= 2 })?.key else { return }
+
+        if stableElixir < 0 { stableElixir = confirmed; prevElixir = confirmed; return }
+        guard confirmed != stableElixir else {
+            closeDropIfSettled()
+            return
+        }
+        let now = confirmed
+        stableElixir = confirmed
         defer { prevElixir = now }
-        guard now >= 0 else { return }
-        guard prevElixir >= 0 else { return }
 
         if now < prevElixir {
             // La baisse commence, ou se poursuit sur plusieurs mesures
@@ -152,11 +172,16 @@ final class SoundAnalyzer: ObservableObject {
             return
         }
 
-        // Plus de baisse : on clôture après un court délai de stabilisation
-        if let start = dropStart, Date().timeIntervalSince(start) > 0.35 {
+        closeDropIfSettled()
+    }
+
+    /// Clôt une baisse en cours dès qu'elle ne progresse plus.
+    private func closeDropIfSettled() {
+        if let start = dropStart, Date().timeIntervalSince(start) > 0.5 {
             let drop = dropFrom - dropTo
             dropStart = nil
-            guard drop >= 1 else { return }
+            // Une carte coûte au plus 9 : au-delà, c'est une erreur de lecture
+            guard drop >= 1, drop <= 9 else { return }
 
             // Le son du déploiement se trouve juste avant : on prend les
             // dernières trames reçues, soit environ trois dixièmes de seconde.
@@ -214,6 +239,8 @@ final class SoundAnalyzer: ObservableObject {
         levelHistory.removeAll()
         recentElixir.removeAll()
         prevElixir = -1
+        stableElixir = -1
+        rawElixir.removeAll()
         dropStart = nil
         capturing = false
         capture.removeAll()

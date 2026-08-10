@@ -1,166 +1,185 @@
 import SwiftUI
 
-// Écran d'apprentissage : on choisit une carte, on la pose en jeu,
-// l'app enregistre le son tel qu'elle l'entend réellement.
+// Apprentissage sans manipulation en jeu :
+// on déclare son deck une fois, puis l'app apprend toute seule.
 struct LearnView: View {
     @ObservedObject private var learned = LearnedSounds.shared
-    @ObservedObject private var capture = CaptureBridge.shared
-    @ObservedObject private var sound = SoundAnalyzer.shared
     @State private var search = ""
+    @State private var editingDeck = false
 
     private var results: [Card] {
         let q = CardCatalog.normalize(search)
-        if q.isEmpty {
-            return CardCatalog.all.filter { learned.count(for: $0.id) > 0 }
-        }
+        guard !q.isEmpty else { return [] }
         return CardCatalog.all.filter {
             CardCatalog.normalize($0.name).contains(q)
                 || $0.aliases.contains { CardCatalog.normalize($0).contains(q) }
-        }
+        }.prefix(12).map { $0 }
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        ScrollView {
+            VStack(spacing: 16) {
 
-            Text("Apprentissage des sons")
-                .font(.headline)
+                Text("Apprentissage des sons")
+                    .font(.headline)
 
-            // Carte en cours
-            if let t = learned.target {
-                VStack(spacing: 4) {
-                    Text("Pose maintenant : \(t.name) (\(t.cost))")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.green)
-                    Text("Ton élixir doit baisser de \(t.cost)")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Annuler") { learned.target = nil }
-                        .font(.caption)
-                }
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity)
-                .background(Color.green.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 20)
-            } else {
-                Text("Choisis une carte, puis pose-la en jeu")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-
-            // Enregistrement manuel : le plus fiable
-            if let t = learned.target {
-                let age = Date().timeIntervalSince(sound.lastCaptureAt)
-                Button {
-                    if sound.lastCapture.count >= 20 {
-                        learned.add(sound.lastCapture, for: t)
-                    } else {
-                        learned.lastMessage = "Aucune impulsion récente"
-                    }
-                } label: {
-                    VStack(spacing: 2) {
-                        Text("Enregistrer la dernière impulsion")
+                // --- 1. Ton deck ---
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Ton deck — \(learned.myDeck.count)/8")
                             .font(.subheadline.weight(.semibold))
-                        Text(sound.lastCapture.isEmpty ? "aucune"
-                             : String(format: "il y a %.1f s", age))
-                            .font(.caption2)
+                        Spacer()
+                        Button(editingDeck ? "Terminé" : "Modifier") {
+                            editingDeck.toggle(); search = ""
+                        }
+                        .font(.footnote)
                     }
-                    .frame(maxWidth: .infinity, minHeight: 52)
-                    .background(age < 5 ? Color.blue.opacity(0.25)
-                                        : Color.gray.opacity(0.15))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-                .padding(.horizontal, 20)
 
-                // Exemples déjà enregistrés pour cette carte
-                if learned.count(for: t.id) > 0 {
-                    VStack(alignment: .leading, spacing: 5) {
-                        Text("Exemples enregistrés — supprime ceux dont la cohérence est basse")
-                            .font(.caption2).foregroundStyle(.secondary)
-                        ForEach(0..<learned.count(for: t.id), id: \.self) { i in
-                            HStack(spacing: 10) {
-                                Text("#\(i + 1)").font(.caption.monospaced())
-                                if let c = learned.consistency(t.id, at: i) {
-                                    Text("cohérence \(Int(c * 100)) %")
-                                        .font(.caption)
-                                        .foregroundStyle(c > 0.75 ? .green
-                                                         : (c > 0.55 ? .orange : .red))
-                                } else {
-                                    Text("—").font(.caption).foregroundStyle(.secondary)
-                                }
+                    if learned.myDeck.isEmpty {
+                        Text("Déclare tes 8 cartes : l'app saura ensuite deviner "
+                             + "seule ce que tu poses, à partir de ton élixir dépensé.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible()), count: 2),
+                              spacing: 6) {
+                        ForEach(learned.myDeck) { c in
+                            HStack {
+                                Text(c.name).font(.caption).lineLimit(1)
                                 Spacer()
-                                Button {
-                                    learned.remove(t.id, at: i)
-                                } label: {
-                                    Image(systemName: "trash")
-                                        .foregroundStyle(.red)
+                                Text("\(c.cost)").font(.caption.bold())
+                                    .foregroundStyle(.purple)
+                                Text("· \(learned.count(for: c.id))")
+                                    .font(.caption2)
+                                    .foregroundStyle(learned.count(for: c.id) >= 3
+                                                     ? .green : .orange)
+                                if editingDeck {
+                                    Button { learned.toggleDeck(c) } label: {
+                                        Image(systemName: "minus.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
                                 }
                             }
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Color.gray.opacity(0.10))
+                            .padding(.horizontal, 9).padding(.vertical, 6)
+                            .background(Color.gray.opacity(0.12))
                             .clipShape(RoundedRectangle(cornerRadius: 8))
                         }
                     }
-                    .padding(.horizontal, 20)
-                }
-            }
 
-            Text(learned.lastMessage)
-                .font(.caption).foregroundStyle(.blue)
-
-            HStack {
-                Text("Ton élixir : \(capture.myElixir)")
-                Spacer()
-                Text("\(learned.cardCount) cartes · \(learned.totalExamples) exemples")
-            }
-            .font(.caption).foregroundStyle(.secondary)
-            .padding(.horizontal, 20)
-
-            TextField("Chercher une carte…", text: $search)
-                .textFieldStyle(.roundedBorder)
-                .autocorrectionDisabled()
-                .padding(.horizontal, 20)
-
-            ScrollView {
-                LazyVStack(spacing: 5) {
-                    ForEach(results) { card in
-                        Button {
-                            learned.target = card
-                            learned.lastMessage = "En attente de \(card.name)…"
-                        } label: {
-                            HStack {
-                                Text(card.name)
-                                    .foregroundStyle(.primary)
-                                Text("(\(card.cost))")
-                                    .foregroundStyle(.purple)
-                                Spacer()
-                                let n = learned.count(for: card.id)
-                                if n > 0 {
-                                    Text("\(n) appris")
-                                        .font(.caption)
-                                        .foregroundStyle(n >= 3 ? .green : .orange)
+                    if editingDeck {
+                        TextField("Chercher une carte à ajouter…", text: $search)
+                            .textFieldStyle(.roundedBorder)
+                            .autocorrectionDisabled()
+                        ForEach(results) { c in
+                            Button {
+                                learned.toggleDeck(c); search = ""
+                            } label: {
+                                HStack {
+                                    Text(c.name)
+                                    Spacer()
+                                    Text("\(c.cost)").foregroundStyle(.purple)
                                 }
-                            }
-                            .padding(.horizontal, 14).padding(.vertical, 9)
-                            .background(learned.target?.id == card.id
-                                        ? Color.green.opacity(0.2)
-                                        : Color.gray.opacity(0.10))
-                            .clipShape(RoundedRectangle(cornerRadius: 9))
-                        }
-                        .contextMenu {
-                            if learned.count(for: card.id) > 0 {
-                                Button("Oublier cette carte", role: .destructive) {
-                                    learned.forget(card.id)
-                                }
+                                .font(.subheadline)
+                                .padding(.horizontal, 12).padding(.vertical, 8)
+                                .background(Color.blue.opacity(0.12))
+                                .clipShape(RoundedRectangle(cornerRadius: 8))
                             }
                         }
                     }
                 }
                 .padding(.horizontal, 20)
-            }
 
-            Button("Tout oublier", role: .destructive) { learned.forgetAll() }
-                .font(.footnote)
-                .padding(.bottom, 14)
+                Divider()
+
+                // --- 2. Sons à étiqueter ---
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("À étiqueter — \(learned.pending.count)")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Quand plusieurs cartes de ton deck ont le même coût, "
+                         + "l'app ne peut pas trancher seule. Choisis ici, après la partie.")
+                        .font(.caption).foregroundStyle(.secondary)
+
+                    ForEach(learned.pending) { p in
+                        VStack(alignment: .leading, spacing: 6) {
+                            HStack {
+                                Text(p.at, style: .time)
+                                    .font(.caption.monospacedDigit())
+                                    .foregroundStyle(.secondary)
+                                Text("−\(p.drop) élixir")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(.purple)
+                                Spacer()
+                                Button {
+                                    learned.discard(p)
+                                } label: {
+                                    Image(systemName: "xmark.circle")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            HStack(spacing: 6) {
+                                ForEach(p.candidates) { c in
+                                    Button {
+                                        learned.label(p, as: c)
+                                    } label: {
+                                        Text(c.name)
+                                            .font(.caption)
+                                            .padding(.horizontal, 10)
+                                            .padding(.vertical, 7)
+                                            .background(Color.green.opacity(0.18))
+                                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 9)
+                        .background(Color.gray.opacity(0.10))
+                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                    }
+                }
+                .padding(.horizontal, 20)
+
+                Divider()
+
+                // --- 3. Bilan ---
+                VStack(spacing: 6) {
+                    Text("\(learned.cardCount) cartes apprises · \(learned.totalExamples) exemples")
+                        .font(.caption)
+                        .foregroundStyle(learned.isUsable ? .green : .orange)
+                    Text(learned.lastMessage)
+                        .font(.caption2).foregroundStyle(.blue)
+
+                    ForEach(learned.myDeck.filter { learned.count(for: $0.id) > 0 }) { c in
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(c.name).font(.caption.weight(.medium))
+                            ForEach(0..<learned.count(for: c.id), id: \.self) { i in
+                                HStack {
+                                    Text("#\(i + 1)").font(.caption2.monospaced())
+                                    if let s = learned.consistency(c.id, at: i) {
+                                        Text("cohérence \(Int(s * 100)) %")
+                                            .font(.caption2)
+                                            .foregroundStyle(s > 0.75 ? .green
+                                                             : (s > 0.55 ? .orange : .red))
+                                    }
+                                    Spacer()
+                                    Button { learned.remove(c.id, at: i) } label: {
+                                        Image(systemName: "trash").font(.caption2)
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                        }
+                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .background(Color.gray.opacity(0.08))
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    Button("Tout oublier", role: .destructive) { learned.forgetAll() }
+                        .font(.footnote).padding(.top, 6)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 30)
+            }
+            .padding(.top, 16)
         }
-        .padding(.top, 16)
     }
 }

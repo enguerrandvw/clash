@@ -100,6 +100,11 @@ struct SoundView: View {
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                         }
+                        if !o.elixirTrace.isEmpty {
+                            Text(o.elixirTrace)
+                                .font(.caption2)
+                                .foregroundStyle(.cyan)
+                        }
                         if !o.extra.isEmpty {
                             Text("puis " + o.extra)
                                 .font(.caption2).foregroundStyle(.secondary)

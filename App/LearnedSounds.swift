@@ -12,11 +12,72 @@ final class LearnedSounds: ObservableObject {
     /// identifiant de carte → liste d'exemples (chaque exemple = 26 trames)
     @Published private(set) var store: [String: [[[UInt8]]]] = [:]
 
-    /// Carte en cours d'apprentissage, choisie par l'utilisateur.
-    @Published var target: Card?
-    @Published var lastMessage = ""
+    /// Ton deck : 8 cartes déclarées une fois pour toutes.
+    @Published var myDeck: [Card] = []
 
-    init() { load() }
+    /// Sons captés dont on ignore encore la carte, en attente d'étiquetage.
+    struct Pending: Identifiable {
+        let id = UUID()
+        let at: Date
+        let drop: Int
+        let frames: [[UInt8]]
+        let candidates: [Card]
+    }
+    @Published var pending: [Pending] = []
+
+    @Published var lastMessage = ""
+    /// Conservé pour l'ancien mode manuel
+    @Published var target: Card?
+
+    init() { load(); loadDeck() }
+
+    // MARK: - Deck
+
+    func setDeck(_ cards: [Card]) {
+        myDeck = cards
+        UserDefaults.standard.set(cards.map(\.id), forKey: "myDeck.v1")
+    }
+
+    func toggleDeck(_ card: Card) {
+        if let i = myDeck.firstIndex(where: { $0.id == card.id }) {
+            myDeck.remove(at: i)
+        } else if myDeck.count < 8 {
+            myDeck.append(card)
+        }
+        setDeck(myDeck)
+    }
+
+    private func loadDeck() {
+        let ids = UserDefaults.standard.stringArray(forKey: "myDeck.v1") ?? []
+        myDeck = ids.compactMap { id in CardCatalog.all.first { $0.id == id } }
+    }
+
+    /// Appelé quand TON élixir a baissé : on déduit la carte si possible.
+    func observeMyPlay(drop: Int, frames: [[UInt8]]) {
+        guard drop >= 1, frames.count >= 20 else { return }
+        let cands = myDeck.filter { abs($0.cost - drop) <= 1 }
+
+        if cands.count == 1 {
+            add(frames, for: cands[0])
+        } else if cands.count > 1 {
+            pending.insert(Pending(at: Date(), drop: drop,
+                                   frames: Array(frames.prefix(26)),
+                                   candidates: cands), at: 0)
+            if pending.count > 25 { pending.removeLast() }
+            lastMessage = "Son mis de côté : \(cands.count) cartes à \(drop) élixirs"
+        } else {
+            lastMessage = "Baisse de \(drop) : aucune carte de ton deck"
+        }
+    }
+
+    func label(_ p: Pending, as card: Card) {
+        add(p.frames, for: card)
+        pending.removeAll { $0.id == p.id }
+    }
+
+    func discard(_ p: Pending) {
+        pending.removeAll { $0.id == p.id }
+    }
 
     var totalExamples: Int { store.values.reduce(0) { $0 + $1.count } }
     var cardCount: Int { store.keys.count }

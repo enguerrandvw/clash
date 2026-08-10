@@ -320,11 +320,11 @@ class SampleHandler: RPBroadcastSampleHandler {
             let peakDb = dbs.max() ?? -120
             levels.append(UInt8(max(0, min(255, Int((peakDb + 60) / 100 * 255)))))
 
-            // Forme normalisée : la bande dominante vaut 255, 48 dB plus bas vaut 0.
-            // Indépendant du volume : c'est ce qui identifie le son.
+            // Niveaux ABSOLUS par bande : -80 dB à +20 dB ramenés sur 0-255.
+            // Indispensable pour pouvoir soustraire l'ambiance côté app :
+            // une normalisation par tranche détruirait l'enveloppe du son.
             for b in 0..<bandCount {
-                let rel = dbs[b] - peakDb
-                let v = max(0, min(255, Int((rel + 48) / 48 * 255)))
+                let v = max(0, min(255, Int((dbs[b] + 80) / 100 * 255)))
                 frames.append(UInt8(v))
             }
             // Sécurité : on ne laisse pas la file grossir sans fin

@@ -305,6 +305,20 @@ def main():
     print(f"\nPRÉCISION FINALE : {acc*100:.1f} %")
     print("(hasard = %.1f %%)" % (100 / n_out))
 
+    # Exemples témoins : l'app doit les classer correctement.
+    # Ils permettent de savoir si le défaut vient de l'inférence Swift
+    # ou de la capture audio sur le téléphone.
+    probe_idx, probe_lbl = [], []
+    for ci in range(n_out):
+        cands = [i for i in va if Y[i] == ci]
+        if cands:
+            probe_idx.append(cands[0])
+            probe_lbl.append(ci)
+        if len(probe_idx) >= 6:
+            break
+    probes = X[probe_idx]          # déjà normalisés
+    print("Exemples témoins :", [labels[i] for i in probe_lbl])
+
     def arr(a):
         return "[" + ",".join(f"{x:.4f}" for x in np.asarray(a).flatten()) + "]"
 
@@ -326,6 +340,11 @@ def main():
         f.write(f"    static let b1: [Float] = {arr(b1)}\n")
         f.write(f"    static let w2: [Float] = {arr(W2)}\n")
         f.write(f"    static let b2: [Float] = {arr(b2)}\n")
+        f.write("    // Exemples témoins, DÉJÀ normalisés\n")
+        f.write(f"    static let probes: [Float] = {arr(probes)}\n")
+        f.write("    static let probeLabels: [Int] = [")
+        f.write(", ".join(str(i) for i in probe_lbl))
+        f.write("]\n")
         f.write("}\n")
     print("Écrit dans", out_path)
 

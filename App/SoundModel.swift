@@ -15,4 +15,6 @@ enum SoundModel {
     static let b1: [Float] = []
     static let w2: [Float] = []
     static let b2: [Float] = []
+    static let probes: [Float] = []
+    static let probeLabels: [Int] = []
 }

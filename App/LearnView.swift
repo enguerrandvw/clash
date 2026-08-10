@@ -159,7 +159,16 @@ struct LearnView: View {
 
                     ForEach(learned.myDeck.filter { learned.count(for: $0.id) > 0 }) { c in
                         VStack(alignment: .leading, spacing: 3) {
-                            Text(c.name).font(.caption.weight(.medium))
+                            HStack(spacing: 8) {
+                                Text(c.name).font(.caption.weight(.medium))
+                                if let sep = learned.separation(for: c.id) {
+                                    let gap = sep.own - sep.other
+                                    Text("propre \(Int(sep.own * 100)) % · confusion \(Int(sep.other * 100)) % (\(sep.with))")
+                                        .font(.caption2)
+                                        .foregroundStyle(gap > 0.12 ? .green
+                                                         : (gap > 0.05 ? .orange : .red))
+                                }
+                            }
                             ForEach(0..<learned.count(for: c.id), id: \.self) { i in
                                 HStack {
                                     Text("#\(i + 1)").font(.caption2.monospaced())

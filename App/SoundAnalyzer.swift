@@ -91,12 +91,10 @@ final class SoundAnalyzer: ObservableObject {
             // Mode apprentissage : si une carte est sélectionnée et que TON
             // élixir a baissé du bon montant, on enregistre l'empreinte.
             let learn = LearnedSounds.shared
-            if let t = learn.target, drop >= 1 {
-                if abs(drop - t.cost) <= 2 {
-                    learn.add(capture, for: t)
-                } else {
-                    learn.lastMessage = "Baisse de \(drop) au lieu de \(t.cost) — ignoré"
-                }
+            if drop >= 1 {
+                // C'est TOI qui as posé : l'app déduit la carte à partir
+                // de ton deck et du coût constaté.
+                learn.observeMyPlay(drop: drop, frames: capture)
             }
 
             let r = p.result

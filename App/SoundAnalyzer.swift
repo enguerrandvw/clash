@@ -55,6 +55,7 @@ final class SoundAnalyzer: ObservableObject {
     private var dropStart: Date?
     private var dropFrom = 0
     private var dropWindow: [[UInt8]] = []   // son capté au DÉBUT de la baisse
+    private var dropAmbience: [[UInt8]] = [] // ambiance mesurée juste avant
     private var dropTo = 0
     private var recentElixir: [Int] = []  // historique court, pour retrouver le pic
     private var pendingIndex: Int?
@@ -121,7 +122,10 @@ final class SoundAnalyzer: ObservableObject {
             // à l'apprentissage et à la reconnaissance, donc pas d'écart possible.
             var name = "?"
             var pct = 0
-            if let hit = learn.recognise(capture) {
+            let treated = LearnedSounds.process(
+                window: capture,
+                ambience: Array(frames.suffix(60).prefix(20)))
+            if let hit = learn.recognise(treated) {
                 pct = Int(hit.score * 100)
                 name = hit.score >= minScore ? hit.card.name : "?"
                 p.extra = hit.runnerUp
@@ -181,8 +185,16 @@ final class SoundAnalyzer: ObservableObject {
                 dropFrom = prevElixir
                 // Le son du déploiement est ICI, au tout début de la baisse.
                 // Une demi-seconde plus tard il est déjà passé.
-                // Fenêtre large : le son peut arriver avec un retard variable
-                dropWindow = Array(frames.suffix(40))
+                // 60 trames : les 20 premières servent de profil d'ambiance,
+                // les 40 suivantes contiennent le son du déploiement.
+                let all = Array(frames.suffix(60))
+                if all.count >= 45 {
+                    dropAmbience = Array(all.prefix(all.count - 40))
+                    dropWindow = Array(all.suffix(40))
+                } else {
+                    dropAmbience = []
+                    dropWindow = all
+                }
             }
             dropTo = now
             return
@@ -200,8 +212,11 @@ final class SoundAnalyzer: ObservableObject {
             guard drop >= 1, drop <= 9 else { return }
 
             // On réutilise l'instantané pris au début de la baisse
-            let window = dropWindow
+            // Ambiance soustraite, porte de bruit, normalisation globale
+            let window = LearnedSounds.process(window: dropWindow,
+                                               ambience: dropAmbience)
             dropWindow = []
+            dropAmbience = []
             myPlays += 1
             lastMyPlayAt = Date()
             lastMyPlayDrop = drop
@@ -295,6 +310,7 @@ final class SoundAnalyzer: ObservableObject {
         rawElixir.removeAll()
         dropStart = nil
         dropWindow = []
+        dropAmbience = []
         lastMyPlayAt = .distantPast
         capturing = false
         capture.removeAll()

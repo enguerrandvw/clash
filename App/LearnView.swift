@@ -4,6 +4,7 @@ import SwiftUI
 // on déclare son deck une fois, puis l'app apprend toute seule.
 struct LearnView: View {
     @ObservedObject private var learned = LearnedSounds.shared
+    @ObservedObject private var sound = SoundAnalyzer.shared
     @State private var search = ""
     @State private var editingDeck = false
 
@@ -22,6 +23,14 @@ struct LearnView: View {
 
                 Text("Apprentissage des sons")
                     .font(.headline)
+
+                VStack(spacing: 2) {
+                    Text("Cartes détectées comme jouées par toi : \(sound.myPlays)")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(sound.myPlays > 0 ? .green : .orange)
+                    Text("dernière : \(sound.lastPlayInfo)")
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
 
                 // --- 1. Ton deck ---
                 VStack(alignment: .leading, spacing: 8) {

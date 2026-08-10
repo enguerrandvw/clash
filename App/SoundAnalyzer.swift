@@ -187,10 +187,12 @@ final class SoundAnalyzer: ObservableObject {
                 // Une demi-seconde plus tard il est déjà passé.
                 // 60 trames : les 20 premières servent de profil d'ambiance,
                 // les 40 suivantes contiennent le son du déploiement.
-                let all = Array(frames.suffix(60))
-                if all.count >= 45 {
-                    dropAmbience = Array(all.prefix(all.count - 40))
-                    dropWindow = Array(all.suffix(40))
+                // 80 trames : 20 d'ambiance, puis 60 pour couvrir le
+                // tintement ET le son de la carte qui le suit.
+                let all = Array(frames.suffix(80))
+                if all.count >= 60 {
+                    dropAmbience = Array(all.prefix(all.count - 60))
+                    dropWindow = Array(all.suffix(60))
                 } else {
                     dropAmbience = []
                     dropWindow = all

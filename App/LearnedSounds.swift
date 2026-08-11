@@ -26,6 +26,9 @@ final class LearnedSounds: ObservableObject {
     @Published var pending: [Pending] = []
 
     @Published var lastMessage = ""
+    @Published var autoLearned = 0      // appris sans intervention
+    @Published var sentToPending = 0    // coût partagé, à étiqueter
+    @Published var noCandidate = 0      // coût absent du deck
     /// Conservé pour l'ancien mode manuel
     @Published var target: Card?
 
@@ -61,14 +64,17 @@ final class LearnedSounds: ObservableObject {
         if cands.isEmpty { cands = myDeck.filter { abs($0.cost - drop) == 1 } }
 
         if cands.count == 1 {
+            autoLearned += 1
             add(frames, for: cands[0])
         } else if cands.count > 1 {
+            sentToPending += 1
             pending.insert(Pending(at: Date(), drop: drop,
                                    frames: Array(frames.prefix(26)),
                                    candidates: cands), at: 0)
             if pending.count > 25 { pending.removeLast() }
             lastMessage = "Son mis de côté : \(cands.count) cartes à \(drop) élixirs"
         } else {
+            noCandidate += 1
             lastMessage = "Baisse de \(drop) : aucune carte de ton deck"
         }
     }
@@ -95,7 +101,7 @@ final class LearnedSounds: ObservableObject {
     }
 
     func add(_ frames: [[UInt8]], for card: Card) {
-        guard frames.count >= 8 else {
+        guard frames.count >= 30 else {
             lastMessage = "Trop court, ignoré"
             return
         }
@@ -206,11 +212,13 @@ final class LearnedSounds: ObservableObject {
         // du bruit, pour que l'enregistrement soit écarté.
         guard bestIdx >= 0, bestJump > 1.5 else { return [] }
 
-        // 40 tranches (≈ 0,46 s) à partir de 4 tranches avant l'attaque
+        // 60 tranches (≈ 0,70 s) : de quoi contenir en ENTIER les sons
+        // longs comme l'Arc-X ou La Bûche, dont la durée est justement
+        // ce qui les distingue des sons brefs.
         let from = max(0, bestIdx - 4)
         var tail = Array(window[from...])
-        if tail.count > 40 { tail = Array(tail.prefix(40)) }
-        guard tail.count >= 20 else { return [] }
+        if tail.count > 60 { tail = Array(tail.prefix(60)) }
+        guard tail.count >= 30 else { return [] }
 
         // Normalisation douce sur le pic de cette portion, sans soustraction :
         // la soustraction d'ambiance écrasait le signal utile.
@@ -237,7 +245,7 @@ final class LearnedSounds: ObservableObject {
 
     /// Compare aux exemples appris. Retourne la carte la plus ressemblante.
     func recognise(_ frames: [[UInt8]]) -> Hit? {
-        guard isUsable, frames.count >= 8 else { return nil }
+        guard isUsable, frames.count >= 30 else { return nil }
         let probe = frames
 
         var best: (String, Double) = ("", -2)
@@ -280,7 +288,10 @@ final class LearnedSounds: ObservableObject {
         // La baisse d'élixir est détectée avec un retard variable : le son
         // peut se trouver décalé d'une dizaine de trames d'un enregistrement
         // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
-        for shift in -10...10 {
+        // Les séquences sont déjà calées sur l'attaque détectée : un
+        // glissement large laisserait un son long se superposer à
+        // n'importe quoi et effacerait la différence de durée.
+        for shift in -3...3 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)

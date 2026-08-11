@@ -11,6 +11,8 @@ final class LearnedSounds: ObservableObject {
 
     /// identifiant de carte → liste d'exemples (chaque exemple = 26 trames)
     @Published private(set) var store: [String: [[[UInt8]]]] = [:]
+    /// Audio brut correspondant, pour vérification à l'oreille
+    @Published private(set) var audioStore: [String: [[UInt8]]] = [:]
 
     /// Ton deck : 8 cartes déclarées une fois pour toutes.
     @Published var myDeck: [Card] = []
@@ -21,6 +23,7 @@ final class LearnedSounds: ObservableObject {
         let at: Date
         let drop: Int
         let frames: [[UInt8]]
+        let audio: [UInt8]
         let candidates: [Card]
     }
     @Published var pending: [Pending] = []
@@ -56,7 +59,7 @@ final class LearnedSounds: ObservableObject {
     }
 
     /// Appelé quand TON élixir a baissé : on déduit la carte si possible.
-    func observeMyPlay(drop: Int, frames: [[UInt8]]) {
+    func observeMyPlay(drop: Int, frames: [[UInt8]], audio: [UInt8] = []) {
         guard drop >= 1, frames.count >= 20 else { return }
         // Coût exact d'abord : une baisse de 2 ne peut etre que La Buche.
         // On n'elargit que si rien ne correspond exactement.
@@ -65,11 +68,11 @@ final class LearnedSounds: ObservableObject {
 
         if cands.count == 1 {
             autoLearned += 1
-            add(frames, for: cands[0])
+            add(frames, for: cands[0], audio: audio)
         } else if cands.count > 1 {
             sentToPending += 1
             pending.insert(Pending(at: Date(), drop: drop,
-                                   frames: Array(frames.prefix(26)),
+                                   frames: frames, audio: audio,
                                    candidates: cands), at: 0)
             if pending.count > 25 { pending.removeLast() }
             lastMessage = "Son mis de côté : \(cands.count) cartes à \(drop) élixirs"
@@ -80,7 +83,7 @@ final class LearnedSounds: ObservableObject {
     }
 
     func label(_ p: Pending, as card: Card) {
-        add(p.frames, for: card)
+        add(p.frames, for: card, audio: p.audio)
         pending.removeAll { $0.id == p.id }
     }
 
@@ -100,14 +103,25 @@ final class LearnedSounds: ObservableObject {
         return list[index]
     }
 
-    func add(_ frames: [[UInt8]], for card: Card) {
+    func audio(_ id: String, at index: Int) -> [UInt8]? {
+        guard let list = audioStore[id], index < list.count else { return nil }
+        return list[index]
+    }
+
+    func add(_ frames: [[UInt8]], for card: Card, audio: [UInt8] = []) {
         guard frames.count >= 30 else {
             lastMessage = "Trop court, ignoré"
             return
         }
         let clipped = frames
         store[card.id, default: []].append(clipped)
-        if store[card.id]!.count > 8 { store[card.id]!.removeFirst() }
+        audioStore[card.id, default: []].append(audio)
+        if store[card.id]!.count > 8 {
+            store[card.id]!.removeFirst()
+            if !(audioStore[card.id]?.isEmpty ?? true) {
+                audioStore[card.id]!.removeFirst()
+            }
+        }
         lastMessage = "\(card.name) : \(store[card.id]!.count) exemple(s)"
         save()
     }
@@ -149,6 +163,10 @@ final class LearnedSounds: ObservableObject {
         guard var list = store[id], index < list.count else { return }
         list.remove(at: index)
         if list.isEmpty { store.removeValue(forKey: id) } else { store[id] = list }
+        if var a = audioStore[id], index < a.count {
+            a.remove(at: index)
+            if a.isEmpty { audioStore.removeValue(forKey: id) } else { audioStore[id] = a }
+        }
         save()
     }
 
@@ -167,11 +185,13 @@ final class LearnedSounds: ObservableObject {
 
     func forget(_ id: String) {
         store.removeValue(forKey: id)
+        audioStore.removeValue(forKey: id)
         save()
     }
 
     func forgetAll() {
         store.removeAll()
+        audioStore.removeAll()
         save()
     }
 
@@ -335,6 +355,13 @@ final class LearnedSounds: ObservableObject {
         if let d = try? JSONEncoder().encode(flat) {
             UserDefaults.standard.set(d, forKey: key)
         }
+        var au: [String: [String]] = [:]
+        for (id, list) in audioStore {
+            au[id] = list.map { Data($0).base64EncodedString() }
+        }
+        if let d = try? JSONEncoder().encode(au) {
+            UserDefaults.standard.set(d, forKey: key + ".audio")
+        }
     }
 
     private func load() {
@@ -356,6 +383,13 @@ final class LearnedSounds: ObservableObject {
                 examples.append(frames)
             }
             if !examples.isEmpty { store[id] = examples }
+        }
+
+        if let ad = UserDefaults.standard.data(forKey: key + ".audio"),
+           let au = try? JSONDecoder().decode([String: [String]].self, from: ad) {
+            for (id, list) in au {
+                audioStore[id] = list.map { [UInt8](Data(base64Encoded: $0) ?? Data()) }
+            }
         }
     }
 }

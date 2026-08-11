@@ -270,14 +270,17 @@ class SampleHandler: RPBroadcastSampleHandler {
                 let v = Float(p[i]) / 32768.0
                 pending.append(v)
 
-                // 44100 → 11025 Hz. On MOYENNE quatre échantillons au lieu
-                // d'en jeter trois : sans ce filtrage, tout le contenu au-dessus
-                // de 5,5 kHz se replie dans les graves et devient du sifflement.
+                // 44100 → 11025 Hz, en moyennant quatre échantillons pour
+                // éviter que les aigus se replient dans les graves.
                 pcmAcc += v
                 pcmPhase += 1
                 if pcmPhase >= 4 {
                     let c = max(-1, min(1, pcmAcc / 4))
-                    pcm.append(UInt8(Int((c + 1) * 127.5)))
+                    // Encodage μ-law : 8 bits logarithmiques valent environ
+                    // 14 bits linéaires. Indispensable ici, car un son de jeu
+                    // n'occupe qu'une fraction de l'échelle et serait noyé
+                    // sous le bruit de quantification en 8 bits linéaires.
+                    pcm.append(Self.muLawEncode(Int16(c * 32767)))
                     pcmPhase = 0
                     pcmAcc = 0
                 }
@@ -287,6 +290,26 @@ class SampleHandler: RPBroadcastSampleHandler {
             analysePending()
         }
         return min(1, peak)
+    }
+
+    /// Encodage μ-law standard (G.711).
+    static func muLawEncode(_ sample: Int16) -> UInt8 {
+        let bias: Int32 = 132
+        let clip: Int32 = 32635
+        var v = Int32(sample)
+        let sign: Int32 = v < 0 ? 0x80 : 0
+        if v < 0 { v = -v }
+        if v > clip { v = clip }
+        v += bias
+
+        var exponent: Int32 = 7
+        var mask: Int32 = 0x4000
+        while exponent > 0 && (v & mask) == 0 {
+            exponent -= 1
+            mask >>= 1
+        }
+        let mantissa = (v >> (exponent + 3)) & 0x0F
+        return UInt8(~(sign | (exponent << 4) | mantissa) & 0xFF)
     }
 
     // MARK: - Spectre

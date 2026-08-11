@@ -5,6 +5,7 @@ import SwiftUI
 struct LearnView: View {
     @ObservedObject private var learned = LearnedSounds.shared
     @ObservedObject private var sound = SoundAnalyzer.shared
+    @ObservedObject private var capture = CaptureBridge.shared
     @State private var search = ""
     @State private var editingDeck = false
 

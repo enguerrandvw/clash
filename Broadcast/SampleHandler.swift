@@ -234,10 +234,14 @@ class SampleHandler: RPBroadcastSampleHandler {
         // Canaux séparés ou entrelacés : ça change complètement la façon
         // de parcourir les échantillons.
         let nonInterleaved = (asbd.mFormatFlags & kAudioFormatFlagIsNonInterleaved) != 0
+        // ReplayKit livre l'audio en GROS-BOUTISTE. Sans inverser les octets,
+        // chaque échantillon est lu à l'envers : le signal devient du bruit.
+        let bigEndian = (asbd.mFormatFlags & kAudioFormatFlagIsBigEndian) != 0
         audioFormat = (isFloat ? "float" : "int") + "\(asbd.mBitsPerChannel)"
             + " \(Int(asbd.mSampleRate))Hz "
             + "\(asbd.mChannelsPerFrame)ch "
             + (nonInterleaved ? "séparés" : "entrelacés")
+            + (bigEndian ? " BE" : " LE")
 
         var block: CMBlockBuffer?
         var abl = AudioBufferList()
@@ -265,7 +269,10 @@ class SampleHandler: RPBroadcastSampleHandler {
             let p16 = data.assumingMemoryBound(to: Int16.self)
             let cnt = min(6, byteSize / 2)
             var vals: [String] = []
-            for k in 0..<cnt { vals.append("\(p16[k])") }
+            let be = (asbd.mFormatFlags & kAudioFormatFlagIsBigEndian) != 0
+            for k in 0..<cnt {
+                vals.append("\(be ? Int16(bigEndian: p16[k]) : p16[k])")
+            }
             bufLock.lock()
             rawPeek = "octets \(byteSize) / attendu \(expected) · "
                 + "\(declared) éch · flags \(asbd.mFormatFlags) · "
@@ -291,8 +298,14 @@ class SampleHandler: RPBroadcastSampleHandler {
         } else if asbd.mBitsPerChannel == 16, bytes >= 2 {
             let n = bytes / 2
             let p = data.assumingMemoryBound(to: Int16.self)
+            @inline(__always) func sample(_ k: Int) -> Int16 {
+                bigEndian ? Int16(bigEndian: p[k]) : p[k]
+            }
+
             var m: Int32 = 0
-            for i in stride(from: 0, to: n, by: 2) { m = max(m, abs(Int32(p[i]))) }
+            for i in stride(from: 0, to: n, by: 2) {
+                m = max(m, abs(Int32(sample(i))))
+            }
             peak = Float(m) / Float(Int16.max)
 
             // On empile les échantillons pour l'analyse spectrale.
@@ -304,7 +317,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             defer { bufLock.unlock() }
             var i = 0
             while i < n {
-                let v = Float(p[i]) / 32768.0
+                let v = Float(sample(i)) / 32768.0
                 pending.append(v)
 
                 // 44100 → 11025 Hz, en moyennant quatre échantillons pour

@@ -176,7 +176,10 @@ final class SoundAnalyzer: ObservableObject {
         harvestAmbience = []
         lastRaw = Array(raw.suffix(50))
         lastProcessed = treated
-        guard treated.count >= 12 else { return }
+        guard treated.count >= 20 else {
+            lastPlayInfo += " · AUCUN ÉVÉNEMENT SONORE"
+            return
+        }
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
     }
 

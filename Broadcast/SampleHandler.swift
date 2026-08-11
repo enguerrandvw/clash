@@ -27,6 +27,12 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var pcmPhase = 0
     private var pcmAcc: Float = 0
 
+    /// ReplayKit livre la vidéo et l'audio sur des threads DIFFÉRENTS.
+    /// Sans ce verrou, le thread vidéo vide les tampons pendant que le
+    /// thread audio y écrit : la mémoire se corrompt et le signal devient
+    /// du bruit aléatoire.
+    private let bufLock = NSLock()
+
     // --- Analyse spectrale ---
     private let fftSize = 1024
     private let bandCount = 32
@@ -151,7 +157,7 @@ class SampleHandler: RPBroadcastSampleHandler {
                     profile.append(avg)
                     if avg > bestScore { bestScore = avg; bestRow = row }
                 }
-                rowProfile = profile
+                bufLock.lock(); rowProfile = profile; bufLock.unlock()
                 bestRowFrac = ch > 0 ? Double(bestRow) / Double(ch) : 0
 
                 // --- Lecture des 10 segments sur la ligne la plus saturée ---
@@ -177,7 +183,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             }
         }
 
-        if !out.isEmpty { bandSamples = out }
+        if !out.isEmpty { bufLock.lock(); bandSamples = out; bufLock.unlock() }
 
         readDigit(pb)
     }
@@ -211,7 +217,8 @@ class SampleHandler: RPBroadcastSampleHandler {
                 px[j * ow + i] = buf[off]
             }
         }
-        digitB64 = Data(px).base64EncodedString()
+        let b64 = Data(px).base64EncodedString()
+        bufLock.lock(); digitB64 = b64; bufLock.unlock()
     }
 
     // MARK: - Audio, sans hypothèse sur le format
@@ -265,6 +272,8 @@ class SampleHandler: RPBroadcastSampleHandler {
             // il ne faut surtout pas sauter d'échantillons, sinon la fréquence
             // d'échantillonnage est divisée par deux et tout le spectre se décale.
             let step = nonInterleaved ? 1 : channels
+            bufLock.lock()
+            defer { bufLock.unlock() }
             var i = 0
             while i < n {
                 let v = Float(p[i]) / 32768.0
@@ -403,6 +412,19 @@ class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func send(note: String) {
+        // Instantané cohérent des tampons, pris sous verrou
+        bufLock.lock()
+        let specSnapshot = frames
+        let levSnapshot = levels
+        let pcmSnapshot = pcm
+        let bandSnapshot = bandSamples
+        let rowSnapshot = rowProfile
+        let digitSnapshot = digitB64
+        frames.removeAll(keepingCapacity: true)
+        levels.removeAll(keepingCapacity: true)
+        pcm.removeAll(keepingCapacity: true)
+        bufLock.unlock()
+
         let state: [String: Any] = [
             "note": note,
             "elapsed": Date().timeIntervalSince(startedAt),
@@ -410,12 +432,12 @@ class SampleHandler: RPBroadcastSampleHandler {
             "audioBuffers": audioCount,
             "audioPeak": audioPeak,
             "audioPeakMax": audioPeakMax,
-            "band": bandSamples,
-            "rowProfile": rowProfile,
-            "digit": digitB64,
-            "spec": Data(frames).base64EncodedString(),
-            "lev": Data(levels).base64EncodedString(),
-            "pcm": Data(pcm).base64EncodedString(),
+            "band": bandSnapshot,
+            "rowProfile": rowSnapshot,
+            "digit": digitSnapshot,
+            "spec": Data(specSnapshot).base64EncodedString(),
+            "lev": Data(levSnapshot).base64EncodedString(),
+            "pcm": Data(pcmSnapshot).base64EncodedString(),
             "pcmRate": 11025,
             "bands": bandCount,
             "bestRowFrac": bestRowFrac,
@@ -425,9 +447,6 @@ class SampleHandler: RPBroadcastSampleHandler {
             "at": Date().timeIntervalSince1970
         ]
         audioPeak = 0
-        frames.removeAll(keepingCapacity: true)
-        levels.removeAll(keepingCapacity: true)
-        pcm.removeAll(keepingCapacity: true)
         guard let d = try? JSONSerialization.data(withJSONObject: state) else { return }
         conn?.send(content: d, completion: .idempotent)
     }

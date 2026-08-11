@@ -37,6 +37,9 @@ final class SoundAnalyzer: ObservableObject {
     private var lastMyPlayAt = Date.distantPast
     private var lastMyPlayDrop = 0
     @Published var lastPlayInfo = "—"
+    /// Dernière fenêtre traitée, pour inspection visuelle
+    @Published var lastProcessed: [[UInt8]] = []
+    @Published var lastRaw: [[UInt8]] = []
     @Published var bandsSeen = 0
     @Published var classifyOK = 0
     @Published var classifyFail = 0
@@ -171,6 +174,8 @@ final class SoundAnalyzer: ObservableObject {
         let raw = Array(frames.suffix(160))
         let treated = LearnedSounds.process(window: raw, ambience: harvestAmbience)
         harvestAmbience = []
+        lastRaw = Array(raw.suffix(50))
+        lastProcessed = treated
         guard treated.count >= 12 else { return }
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
     }

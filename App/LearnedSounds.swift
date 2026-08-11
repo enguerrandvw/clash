@@ -116,11 +116,16 @@ final class LearnedSounds: ObservableObject {
         guard n > 0 else { return nil }
         own = (own / n + 1) / 2
 
+        // Comparaison honnête : MOYENNE contre MOYENNE.
+        // Prendre le maximum des paires croisées gonflait artificiellement
+        // la confusion, puisqu'un maximum sur des dizaines de tirages est
+        // toujours élevé.
         var worst = -1.0, worstId = ""
         for (other, examples) in store where other != id {
-            var best = -2.0
-            for a in mine { for b in examples { best = max(best, correlation(a, b)) } }
-            let v = (best + 1) / 2
+            var sum = 0.0, k = 0.0
+            for a in mine { for b in examples { sum += correlation(a, b); k += 1 } }
+            guard k > 0 else { continue }
+            let v = (sum / k + 1) / 2
             if v > worst { worst = v; worstId = other }
         }
         let name = CardCatalog.all.first { $0.id == worstId }?.name ?? "—"
@@ -245,10 +250,13 @@ final class LearnedSounds: ObservableObject {
         var second: (String, Double) = ("", -2)
 
         for (id, examples) in store {
-            var bestForCard = -2.0
-            for ex in examples {
-                bestForCard = max(bestForCard, correlation(probe, ex))
-            }
+            // Moyenne des deux meilleures correspondances : plus stable
+            // qu'un simple record, qui favorise les cartes ayant le plus
+            // d'exemples enregistrés.
+            var scores = examples.map { correlation(probe, $0) }
+            scores.sort(by: >)
+            let take = min(2, scores.count)
+            let bestForCard = scores.prefix(take).reduce(0, +) / Double(take)
             if bestForCard > best.1 {
                 second = best
                 best = (id, bestForCard)

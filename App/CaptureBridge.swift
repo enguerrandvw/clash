@@ -17,6 +17,7 @@ final class CaptureBridge: ObservableObject {
     @Published var audioBuffers = 0
     @Published var audioPeak: Float = 0
     @Published var audioPeakMax: Float = 0
+    @Published var rawPeek = ""
     @Published var band: [Int] = []
     @Published var rowProfile: [Int] = []
     @Published var digitImage: UIImage?
@@ -94,6 +95,7 @@ final class CaptureBridge: ObservableObject {
                     self.audioPeakMax = j["audioPeakMax"] as? Float ?? 0
                     self.band         = j["band"] as? [Int] ?? []
                     self.rowProfile   = j["rowProfile"] as? [Int] ?? []
+                    if let pk = j["peek"] as? String, !pk.isEmpty { self.rawPeek = pk }
 
                     // L'élixir doit être calculé AVANT d'être surveillé,
                     // sinon la détection travaille sur le paquet précédent.

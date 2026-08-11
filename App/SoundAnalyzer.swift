@@ -177,9 +177,11 @@ final class SoundAnalyzer: ObservableObject {
         lastRaw = Array(raw.suffix(50))
         lastProcessed = treated
         guard treated.count >= 20 else {
-            lastPlayInfo += " · AUCUN ÉVÉNEMENT SONORE"
+            lastPlayInfo = "−\(harvestDrop) élixir · AUCUN ÉVÉNEMENT DÉTECTÉ"
             return
         }
+        let relief = Int(variation(treated))
+        lastPlayInfo = "−\(harvestDrop) élixir · événement capté, relief \(relief)"
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
     }
 
@@ -247,10 +249,7 @@ final class SoundAnalyzer: ObservableObject {
             myPlays += 1
             lastMyPlayAt = Date()
             lastMyPlayDrop = drop
-            let spread = variation(window)
-            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo)) · "
-                + (spread < 3 ? "SON PLAT (\(window.count) tr.)"
-                              : "son ok, relief \(Int(spread))")
+            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo)) · écoute…"
 
             // C'est la BAISSE elle-même qui déclenche l'affichage.
             // Plus besoin qu'un son ait été détecté au bon moment.

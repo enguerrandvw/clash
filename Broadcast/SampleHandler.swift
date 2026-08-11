@@ -255,12 +255,20 @@ class SampleHandler: RPBroadcastSampleHandler {
         // Diagnostic : nombre de buffers et premiers échantillons bruts.
         // Si ces valeurs semblent aléatoires, le format est mal interprété.
         if sendTick % 20 == 0 {
+            // On confronte la taille annoncée par le buffer au nombre
+            // d'échantillons que CoreMedia déclare : si les deux ne
+            // concordent pas, on lit au-delà des données valides.
+            let declared = CMSampleBufferGetNumSamples(sb)
+            let byteSize = Int(abl.mBuffers.mDataByteSize)
+            let expected = declared * Int(asbd.mChannelsPerFrame)
+                         * Int(asbd.mBitsPerChannel) / 8
             let p16 = data.assumingMemoryBound(to: Int16.self)
-            let cnt = min(10, Int(abl.mBuffers.mDataByteSize) / 2)
+            let cnt = min(6, byteSize / 2)
             var vals: [String] = []
             for k in 0..<cnt { vals.append("\(p16[k])") }
             bufLock.lock()
-            rawPeek = "bufs \(abl.mNumberBuffers) · \(abl.mBuffers.mNumberChannels)ch · "
+            rawPeek = "octets \(byteSize) / attendu \(expected) · "
+                + "\(declared) éch · flags \(asbd.mFormatFlags) · "
                 + vals.joined(separator: " ")
             bufLock.unlock()
         }

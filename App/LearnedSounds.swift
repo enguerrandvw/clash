@@ -254,16 +254,39 @@ final class LearnedSounds: ObservableObject {
         if tail.count > 60 { tail = Array(tail.prefix(60)) }
         guard tail.count >= 30 else { return [] }
 
-        // Normalisation douce sur le pic de cette portion, sans soustraction :
-        // la soustraction d'ambiance écrasait le signal utile.
+        // --- Retrait du fond stationnaire ---
+        // Pour chaque bande, on retire sa MÉDIANE temporelle sur la fenêtre.
+        // La musique et l'ambiance, constantes, s'annulent ; seuls les
+        // événements brefs — le son de la carte — subsistent.
+        let bandsN = tail.first?.count ?? 0
+        guard bandsN > 0 else { return [] }
+
+        var medians = [Double](repeating: 0, count: bandsN)
+        for b in 0..<bandsN {
+            var col = tail.compactMap { $0.count > b ? toDb($0[b]) : nil }
+            guard !col.isEmpty else { continue }
+            col.sort()
+            medians[b] = col[col.count / 2]
+        }
+
+        var rel: [[Double]] = []
+        for f in tail {
+            var row = [Double](repeating: 0, count: bandsN)
+            for b in 0..<bandsN where f.count > b {
+                row[b] = max(0, toDb(f[b]) - medians[b])
+            }
+            rel.append(row)
+        }
+
+        // Normalisation sur ce qui reste après retrait du fond
         var peak = 0.0
-        for f in tail { for v in f { peak = max(peak, toDb(v)) } }
-        guard peak > -70 else { return [] }
+        for row in rel { for v in row { peak = max(peak, v) } }
+        guard peak > 2 else { return [] }
 
         var out: [[UInt8]] = []
-        for f in tail {
-            out.append(f.map { v in
-                UInt8(max(0, min(255, Int((toDb(v) - peak + 40) / 40 * 255))))
+        for row in rel {
+            out.append(row.map { v in
+                UInt8(max(0, min(255, Int(v / peak * 255))))
             })
         }
         return out

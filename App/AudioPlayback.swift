@@ -40,6 +40,22 @@ final class AudioPlayback: ObservableObject {
         }
     }
 
+    /// Note pure générée dans l'app : si elle sonne juste, la lecture est
+    /// saine et le défaut vient de la capture. Si elle grésille aussi,
+    /// c'est la construction du fichier WAV qui est en cause.
+    func playTestTone() {
+        let rate = 11025
+        let n = rate         // une seconde
+        var samples = [UInt8]()
+        samples.reserveCapacity(n)
+        for i in 0..<n {
+            let t = Double(i) / Double(rate)
+            let v = sin(2 * .pi * 440 * t) * 0.6
+            samples.append(UInt8(Int((v + 1) * 127.5)))
+        }
+        play(samples, rate: rate)
+    }
+
     func stop() {
         player?.stop()
         player = nil

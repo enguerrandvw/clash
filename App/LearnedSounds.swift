@@ -88,6 +88,12 @@ final class LearnedSounds: ObservableObject {
 
     func count(for id: String) -> Int { store[id]?.count ?? 0 }
 
+    /// Un exemple précis, pour inspection visuelle.
+    func example(_ id: String, at index: Int) -> [[UInt8]]? {
+        guard let list = store[id], index < list.count else { return nil }
+        return list[index]
+    }
+
     func add(_ frames: [[UInt8]], for card: Card) {
         guard frames.count >= 8 else {
             lastMessage = "Trop court, ignoré"

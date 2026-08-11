@@ -39,6 +39,11 @@ struct LearnView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(capture.audioPeakMax > 0.01 ? .green : .red)
 
+                    Text("débit audio : \(sound.pcmRateMeasured) éch/s (attendu 11025)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(sound.pcmRateMeasured > 9000 ? .green
+                                         : (sound.pcmRateMeasured > 100 ? .orange : .red))
+
                     Text("tampon \(sound.framesInBuffer) trames · reçues \(sound.totalFrames) au total")
                         .font(.caption2)
                         .foregroundStyle(sound.framesInBuffer > 100 ? .green : .red)

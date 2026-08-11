@@ -172,7 +172,20 @@ final class SoundAnalyzer: ObservableObject {
     /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
     /// Appelé à chaque paquet reçu, que l'audio ait bougé ou non.
     /// Reçoit l'audio brut décimé, pour pouvoir le réécouter ensuite.
+    private var pcmCount = 0
+    private var pcmStart: Date?
+    /// Débit audio réellement reçu. Doit valoir ~11025 échantillons/s.
+    @Published var pcmRateMeasured = 0
+
     func ingestPCM(_ samples: [UInt8]) {
+        if pcmStart == nil { pcmStart = Date() }
+        pcmCount += samples.count
+        if let st = pcmStart {
+            let dt = Date().timeIntervalSince(st)
+            if dt > 1 { pcmRateMeasured = Int(Double(pcmCount) / dt) }
+            if dt > 10 { pcmStart = Date(); pcmCount = 0 }
+        }
+
         pcmBuffer.append(contentsOf: samples)
         let maxLen = pcmRate * 4
         if pcmBuffer.count > maxLen { pcmBuffer.removeFirst(pcmBuffer.count - maxLen) }

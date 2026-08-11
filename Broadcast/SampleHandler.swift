@@ -33,6 +33,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     /// du bruit aléatoire.
     private let bufLock = NSLock()
     private var sendTick = 0
+    private var rawPeek = ""
 
     // --- Analyse spectrale ---
     private let fftSize = 1024
@@ -251,6 +252,19 @@ class SampleHandler: RPBroadcastSampleHandler {
             blockBufferOut: &block)
         guard st == noErr, let data = abl.mBuffers.mData else { return 0 }
 
+        // Diagnostic : nombre de buffers et premiers échantillons bruts.
+        // Si ces valeurs semblent aléatoires, le format est mal interprété.
+        if sendTick % 20 == 0 {
+            let p16 = data.assumingMemoryBound(to: Int16.self)
+            let cnt = min(10, Int(abl.mBuffers.mDataByteSize) / 2)
+            var vals: [String] = []
+            for k in 0..<cnt { vals.append("\(p16[k])") }
+            bufLock.lock()
+            rawPeek = "bufs \(abl.mNumberBuffers) · \(abl.mBuffers.mNumberChannels)ch · "
+                + vals.joined(separator: " ")
+            bufLock.unlock()
+        }
+
         channels = max(1, Int(asbd.mChannelsPerFrame))
         let bytes = Int(abl.mBuffers.mDataByteSize)
         var peak: Float = 0
@@ -430,6 +444,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         // suffit, et le paquet reste assez petit pour partir sans échec.
         sendTick += 1
         let digitSnapshot = (sendTick % 5 == 0) ? digitB64 : ""
+        let peekSnapshot = rawPeek
         frames.removeAll(keepingCapacity: true)
         levels.removeAll(keepingCapacity: true)
         pcm.removeAll(keepingCapacity: true)
@@ -445,6 +460,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             "band": bandSnapshot,
             "rowProfile": rowSnapshot,
             "digit": digitSnapshot,
+            "peek": peekSnapshot,
             "spec": Data(specSnapshot).base64EncodedString(),
             "lev": Data(levSnapshot).base64EncodedString(),
             "pcm": Data(pcmSnapshot).base64EncodedString(),

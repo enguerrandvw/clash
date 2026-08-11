@@ -98,6 +98,22 @@ struct LearnView: View {
                 }
                 .padding(.horizontal, 20)
 
+                // --- Inspection visuelle de la dernière capture ---
+                VStack(alignment: .leading, spacing: 5) {
+                    Text("Dernière capture — brut")
+                        .font(.caption.weight(.medium))
+                    SpectroView(frames: sound.lastRaw, height: 90)
+                    Text(SpectroStats(sound.lastRaw).summary)
+                        .font(.caption2).foregroundStyle(.secondary)
+
+                    Text("Après soustraction et normalisation")
+                        .font(.caption.weight(.medium)).padding(.top, 4)
+                    SpectroView(frames: sound.lastProcessed, height: 90)
+                    Text(SpectroStats(sound.lastProcessed).summary)
+                        .font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+
                 Divider()
 
                 // --- 2. Sons à étiqueter ---
@@ -170,6 +186,9 @@ struct LearnView: View {
                                 }
                             }
                             ForEach(0..<learned.count(for: c.id), id: \.self) { i in
+                                if let ex = learned.example(c.id, at: i) {
+                                    SpectroView(frames: ex, height: 44)
+                                }
                                 HStack {
                                     Text("#\(i + 1)").font(.caption2.monospaced())
                                     if let s = learned.consistency(c.id, at: i) {

@@ -33,6 +33,8 @@ final class SoundAnalyzer: ObservableObject {
     @Published var lastCaptureAt = Date.distantPast
 
     @Published var myPlays = 0
+    // Où partent les détections qui ne deviennent pas des exemples
+    @Published var rejectedNoEvent = 0
     /// Dernière baisse d'élixir constatée : sert aussi à attribuer les impulsions
     private var lastMyPlayAt = Date.distantPast
     private var lastMyPlayDrop = 0
@@ -176,7 +178,8 @@ final class SoundAnalyzer: ObservableObject {
         harvestAmbience = []
         lastRaw = Array(raw.suffix(50))
         lastProcessed = treated
-        guard treated.count >= 20 else {
+        guard treated.count >= 30 else {
+            rejectedNoEvent += 1
             lastPlayInfo = "−\(harvestDrop) élixir · AUCUN ÉVÉNEMENT DÉTECTÉ"
             return
         }

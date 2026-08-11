@@ -180,11 +180,14 @@ final class SoundAnalyzer: ObservableObject {
         lastProcessed = treated
         guard treated.count >= 30 else {
             rejectedNoEvent += 1
-            lastPlayInfo = "−\(harvestDrop) élixir · AUCUN ÉVÉNEMENT DÉTECTÉ"
+            lastPlayInfo = String(format: "−%d élixir · rejeté — bond %.1f dB (seuil %.1f)",
+                                  harvestDrop, LearnedSounds.lastJump,
+                                  LearnedSounds.jumpThreshold)
             return
         }
-        let relief = Int(variation(treated))
-        lastPlayInfo = "−\(harvestDrop) élixir · événement capté, relief \(relief)"
+        lastPlayInfo = String(format: "−%d élixir · capté · bond %.1f dB · relief %d",
+                              harvestDrop, LearnedSounds.lastJump,
+                              Int(variation(treated)))
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
     }
 

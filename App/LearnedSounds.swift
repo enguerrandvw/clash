@@ -183,57 +183,45 @@ final class LearnedSounds: ObservableObject {
     /// 3. normalisation sur le pic de TOUTE la fenêtre, ce qui préserve
     ///    l'enveloppe du son — l'attaque puis le déclin.
     static func process(window: [[UInt8]], ambience: [[UInt8]]) -> [[UInt8]] {
-        guard let bands = window.first?.count, bands > 0, !window.isEmpty
+        guard let bands = window.first?.count, bands > 0, window.count >= 20
         else { return window }
 
-        // Profil de l'ambiance, en puissance linéaire
-        var ambPower = [Double](repeating: 0, count: bands)
-        let amb = ambience.filter { $0.count == bands }
-        if !amb.isEmpty {
-            for f in amb {
-                for b in 0..<bands { ambPower[b] += pow(10, toDb(f[b]) / 10) }
-            }
-            for b in 0..<bands { ambPower[b] /= Double(amb.count) }
+        // Énergie de chaque tranche, en décibels
+        let energy: [Double] = window.map { f in
+            f.reduce(0.0) { $0 + toDb($1) } / Double(max(1, f.count))
         }
 
-        // Soustraction, puis retour en décibels
-        var clean: [[Double]] = []
-        for f in window where f.count == bands {
-            var row = [Double](repeating: -80, count: bands)
-            for b in 0..<bands {
-                let p = pow(10, toDb(f[b]) / 10) - ambPower[b]
-                row[b] = p > 1e-9 ? 10 * log10(p) : -80
-            }
-            clean.append(row)
-        }
-        guard !clean.isEmpty else { return window }
-
-        // Les 40 premières tranches (≈ 0,46 s) contiennent le tintement
-        // d'élixir et le bruit de pose sur le terrain, identiques pour
-        // toutes les cartes. On INTERDIT d'y chercher le pic : il faut
-        // s'accrocher au son de la troupe, qui arrive vers 1 seconde.
-        let blind = min(40, max(0, clean.count - 20))
-        var peakIdx = blind, peakLevel = -300.0
-        for i in blind..<clean.count {
-            let m = clean[i].max() ?? -200
-            if m > peakLevel { peakLevel = m; peakIdx = i }
+        // On cherche l'ÉVÉNEMENT : l'endroit où l'énergie bondit le plus
+        // au-dessus de ce qui la précède. Aucune zone n'est interdite —
+        // le son peut arriver tôt (sorts) ou tard (troupes lourdes).
+        var bestIdx = -1, bestJump = 0.0
+        let look = 8
+        for i in look..<(window.count - 12) {
+            let base = energy[(i - look)..<i].reduce(0, +) / Double(look)
+            let jump = energy[i] - base
+            if jump > bestJump { bestJump = jump; bestIdx = i }
         }
 
-        // 50 tranches (≈ 0,58 s) centrées sur ce pic : un cri de troupe
-        // dure facilement une demi-seconde.
-        let from = max(blind, peakIdx - 10)
-        var tail = Array(clean[from...])
-        if tail.count > 50 { tail = Array(tail.prefix(50)) }
-        guard tail.count >= 12 else { return window }
+        // Pas d'événement franc : on renvoie une fenêtre vide plutôt que
+        // du bruit, pour que l'enregistrement soit écarté.
+        guard bestIdx >= 0, bestJump > 1.5 else { return [] }
 
-        var peak = -300.0
-        for row in tail { for v in row { peak = max(peak, v) } }
-        guard peak > -100 else { return window }
+        // 40 tranches (≈ 0,46 s) à partir de 4 tranches avant l'attaque
+        let from = max(0, bestIdx - 4)
+        var tail = Array(window[from...])
+        if tail.count > 40 { tail = Array(tail.prefix(40)) }
+        guard tail.count >= 20 else { return [] }
+
+        // Normalisation douce sur le pic de cette portion, sans soustraction :
+        // la soustraction d'ambiance écrasait le signal utile.
+        var peak = 0.0
+        for f in tail { for v in f { peak = max(peak, toDb(v)) } }
+        guard peak > -70 else { return [] }
 
         var out: [[UInt8]] = []
-        for row in tail {
-            out.append(row.map { d in
-                UInt8(max(0, min(255, Int((d - peak + 48) / 48 * 255))))
+        for f in tail {
+            out.append(f.map { v in
+                UInt8(max(0, min(255, Int((toDb(v) - peak + 40) / 40 * 255))))
             })
         }
         return out

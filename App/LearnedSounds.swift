@@ -197,29 +197,28 @@ final class LearnedSounds: ObservableObject {
         }
         guard !clean.isEmpty else { return window }
 
-        // Le son le PLUS FORT de la fenêtre est le tintement d'élixir :
-        // il précède chaque pose et il est rigoureusement identique.
-        // Il détourne la normalisation et écrase le son de la carte.
-        // On le repère, puis on coupe la fenêtre juste après lui.
-        var chime = 0, chimeLevel = -300.0
-        for (i, row) in clean.enumerated() {
-            let m = row.max() ?? -200
-            if m > chimeLevel { chimeLevel = m; chime = i }
+        // Les 40 premières tranches (≈ 0,46 s) contiennent le tintement
+        // d'élixir et le bruit de pose sur le terrain, identiques pour
+        // toutes les cartes. On INTERDIT d'y chercher le pic : il faut
+        // s'accrocher au son de la troupe, qui arrive vers 1 seconde.
+        let blind = min(40, max(0, clean.count - 20))
+        var peakIdx = blind, peakLevel = -300.0
+        for i in blind..<clean.count {
+            let m = clean[i].max() ?? -200
+            if m > peakLevel { peakLevel = m; peakIdx = i }
         }
 
-        // On garde 24 tranches (≈ 0,28 s) à partir de 5 tranches après le pic
-        let start = min(clean.count - 1, chime + 5)
-        var tail = Array(clean[start...])
-        if tail.count > 24 { tail = Array(tail.prefix(24)) }
-        guard tail.count >= 8 else { return window }
+        // 50 tranches (≈ 0,58 s) centrées sur ce pic : un cri de troupe
+        // dure facilement une demi-seconde.
+        let from = max(blind, peakIdx - 10)
+        var tail = Array(clean[from...])
+        if tail.count > 50 { tail = Array(tail.prefix(50)) }
+        guard tail.count >= 12 else { return window }
 
-        // Normalisation sur le pic de CE QUI RESTE : la référence est
-        // désormais le son de la carte, plus le tintement.
         var peak = -300.0
         for row in tail { for v in row { peak = max(peak, v) } }
         guard peak > -100 else { return window }
 
-        // Plus de porte de bruit : elle effaçait justement le signal utile.
         var out: [[UInt8]] = []
         for row in tail {
             out.append(row.map { d in
@@ -279,11 +278,11 @@ final class LearnedSounds: ObservableObject {
         // La baisse d'élixir est détectée avec un retard variable : le son
         // peut se trouver décalé d'une dizaine de trames d'un enregistrement
         // à l'autre. On cherche donc le meilleur alignement sur toute la plage.
-        for shift in -6...6 {
+        for shift in -10...10 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)
-            guard n >= 12 else { continue }
+            guard n >= 20 else { continue }
 
             var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
             for i in 0..<n {

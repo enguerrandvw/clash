@@ -39,6 +39,12 @@ struct LearnView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(capture.audioPeakMax > 0.01 ? .green : .red)
 
+                    Text(capture.rawPeek.isEmpty ? "échantillons bruts : —" : capture.rawPeek)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.yellow)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+
                     Text("débit audio : \(sound.pcmRateMeasured) éch/s (attendu 11025)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(sound.pcmRateMeasured > 9000 ? .green

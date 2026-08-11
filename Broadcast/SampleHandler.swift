@@ -255,14 +255,19 @@ class SampleHandler: RPBroadcastSampleHandler {
         let bytes = Int(abl.mBuffers.mDataByteSize)
         var peak: Float = 0
 
+        // `block` possède la mémoire des échantillons. Sans withExtendedLifetime,
+        // le compilateur peut le libérer dès l'appel ci-dessus — on lirait alors
+        // de la mémoire recyclée, ce qui donne un spectre plat et du bruit blanc.
+        withExtendedLifetime(block) {
+
         if isFloat && asbd.mBitsPerChannel == 32 {
             let n = bytes / 4
-            guard n > 0 else { return 0 }
             let p = data.assumingMemoryBound(to: Float.self)
-            for i in stride(from: 0, to: n, by: 4) { peak = max(peak, abs(p[i])) }
-        } else if asbd.mBitsPerChannel == 16 {
+            let stepF = nonInterleaved ? 1 : channels
+            var i = 0
+            while i < n { peak = max(peak, abs(p[i])); i += stepF }
+        } else if asbd.mBitsPerChannel == 16, bytes >= 2 {
             let n = bytes / 2
-            guard n > 0 else { return 0 }
             let p = data.assumingMemoryBound(to: Int16.self)
             var m: Int32 = 0
             for i in stride(from: 0, to: n, by: 2) { m = max(m, abs(Int32(p[i]))) }
@@ -298,6 +303,7 @@ class SampleHandler: RPBroadcastSampleHandler {
             }
             if pcm.count > 11025 * 3 { pcm.removeFirst(pcm.count - 11025 * 3) }
             analysePending()
+        }
         }
         return min(1, peak)
     }

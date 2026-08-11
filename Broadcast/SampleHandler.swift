@@ -32,6 +32,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     /// thread audio y écrit : la mémoire se corrompt et le signal devient
     /// du bruit aléatoire.
     private let bufLock = NSLock()
+    private var sendTick = 0
 
     // --- Analyse spectrale ---
     private let fftSize = 1024
@@ -419,7 +420,10 @@ class SampleHandler: RPBroadcastSampleHandler {
         let pcmSnapshot = pcm
         let bandSnapshot = bandSamples
         let rowSnapshot = rowProfile
-        let digitSnapshot = digitB64
+        // L'imagette du chiffre pèse 850 caractères : une fois sur cinq
+        // suffit, et le paquet reste assez petit pour partir sans échec.
+        sendTick += 1
+        let digitSnapshot = (sendTick % 5 == 0) ? digitB64 : ""
         frames.removeAll(keepingCapacity: true)
         levels.removeAll(keepingCapacity: true)
         pcm.removeAll(keepingCapacity: true)

@@ -30,6 +30,14 @@ struct LearnView: View {
                         .foregroundStyle(sound.myPlays > 0 ? .green : .orange)
                     Text("dernière : \(sound.lastPlayInfo)")
                         .font(.caption2).foregroundStyle(.secondary)
+                    // Le son arrive-t-il seulement jusqu'ici ?
+                    Text(capture.audioPeakMax > 0.01
+                         ? String(format: "SON REÇU · crête %.2f · max %.2f",
+                                  capture.audioPeak, capture.audioPeakMax)
+                         : "AUCUN SON REÇU — vérifie les effets sonores du jeu")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(capture.audioPeakMax > 0.01 ? .green : .red)
+
                     Text("appris \(learned.autoLearned) · en attente \(learned.sentToPending)"
                          + " · sans événement \(sound.rejectedNoEvent)"
                          + " · hors deck \(learned.noCandidate)")
@@ -116,6 +124,17 @@ struct LearnView: View {
                     SpectroView(frames: sound.lastProcessed, height: 90)
                     Text(SpectroStats(sound.lastProcessed).summary)
                         .font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.horizontal, 20)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(String(format: "Seuil de détection : %.1f dB",
+                                LearnedSounds.jumpThreshold))
+                        .font(.caption).foregroundStyle(.secondary)
+                    Slider(value: Binding(
+                        get: { LearnedSounds.jumpThreshold },
+                        set: { LearnedSounds.jumpThreshold = $0 }),
+                        in: 0.5...12, step: 0.5)
                 }
                 .padding(.horizontal, 20)
 

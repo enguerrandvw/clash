@@ -209,7 +209,7 @@ final class LearnedSounds: ObservableObject {
     /// 3. normalisation sur le pic de TOUTE la fenêtre, ce qui préserve
     ///    l'enveloppe du son — l'attaque puis le déclin.
     /// Bond d'énergie minimal pour considérer qu'un son a démarré.
-    nonisolated(unsafe) static var jumpThreshold = 3.0
+    nonisolated(unsafe) static var jumpThreshold = 1.0
     /// Dernier bond mesuré, pour pouvoir régler le seuil au lieu de le deviner.
     nonisolated(unsafe) static var lastJump = 0.0
 
@@ -227,7 +227,8 @@ final class LearnedSounds: ObservableObject {
         // On cherche l'ÉVÉNEMENT : l'endroit où l'énergie bondit le plus
         // au-dessus de ce qui la précède. Aucune zone n'est interdite —
         // le son peut arriver tôt (sorts) ou tard (troupes lourdes).
-        var bestIdx = -1, bestJump = 0.0
+        var bestIdx = -1
+        var bestJump = -100.0
         let look = 8
         for i in look..<(window.count - 12) {
             let base = energy[(i - look)..<i].reduce(0, +) / Double(look)
@@ -238,7 +239,12 @@ final class LearnedSounds: ObservableObject {
         // Pas d'événement franc : on renvoie une fenêtre vide plutôt que
         // du bruit, pour que l'enregistrement soit écarté.
         lastJump = bestJump
-        guard bestIdx >= 0, bestJump > jumpThreshold else { return [] }
+        // On ne rejette plus : dans un jeu qui sonne en permanence, un bond
+        // franc est rare. On retient le meilleur moment trouvé, et à défaut
+        // une position par défaut au milieu de la fenêtre.
+        if bestIdx < 0 || bestJump < jumpThreshold {
+            bestIdx = min(window.count - 1, max(0, window.count / 3))
+        }
 
         // 60 tranches (≈ 0,70 s) : de quoi contenir en ENTIER les sons
         // longs comme l'Arc-X ou La Bûche, dont la durée est justement

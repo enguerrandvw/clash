@@ -43,6 +43,8 @@ final class SoundAnalyzer: ObservableObject {
     @Published var lastProcessed: [[UInt8]] = []
     @Published var lastRaw: [[UInt8]] = []
     @Published var bandsSeen = 0
+    @Published var framesInBuffer = 0
+    @Published var totalFrames = 0
     @Published var classifyOK = 0
     @Published var classifyFail = 0
 
@@ -97,6 +99,8 @@ final class SoundAnalyzer: ObservableObject {
         if frames.count > maxFrames {
             frames.removeFirst(frames.count - maxFrames)
         }
+        framesInBuffer = frames.count
+        totalFrames += count
 
         // Une impulsion en attente : on regarde si l'élixir a chuté depuis
         if var p = pendingOnset, Date().timeIntervalSince(p.at) > 0.75,
@@ -173,6 +177,7 @@ final class SoundAnalyzer: ObservableObject {
         harvestAt = nil
 
         // 160 trames ≈ 1,85 s : couvre le déploiement le plus lent
+        let available = frames.count
         let raw = Array(frames.suffix(160))
         let treated = LearnedSounds.process(window: raw, ambience: harvestAmbience)
         harvestAmbience = []
@@ -180,13 +185,13 @@ final class SoundAnalyzer: ObservableObject {
         lastProcessed = treated
         guard treated.count >= 30 else {
             rejectedNoEvent += 1
-            lastPlayInfo = String(format: "−%d élixir · rejeté — bond %.1f dB (seuil %.1f)",
-                                  harvestDrop, LearnedSounds.lastJump,
+            lastPlayInfo = String(format: "−%d élixir · rejeté — %d trames · bond %.1f dB (seuil %.1f)",
+                                  harvestDrop, available, LearnedSounds.lastJump,
                                   LearnedSounds.jumpThreshold)
             return
         }
-        lastPlayInfo = String(format: "−%d élixir · capté · bond %.1f dB · relief %d",
-                              harvestDrop, LearnedSounds.lastJump,
+        lastPlayInfo = String(format: "−%d élixir · capté · %d trames · bond %.1f dB · relief %d",
+                              harvestDrop, available, LearnedSounds.lastJump,
                               Int(variation(treated)))
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
     }

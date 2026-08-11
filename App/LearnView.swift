@@ -125,6 +125,15 @@ struct LearnView: View {
                         .font(.caption2).foregroundStyle(.secondary)
 
                     Button {
+                        AudioPlayback.shared.playTestTone()
+                    } label: {
+                        Label("Tester le son (note pure)", systemImage: "tuningfork")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.orange)
+                    }
+                    .padding(.top, 4)
+
+                    Button {
                         AudioPlayback.shared.play(sound.lastAudio)
                     } label: {
                         Label("Écouter la dernière capture",

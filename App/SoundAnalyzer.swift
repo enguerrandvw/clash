@@ -211,9 +211,8 @@ final class SoundAnalyzer: ObservableObject {
         lastProcessed = treated
         guard treated.count >= 30 else {
             rejectedNoEvent += 1
-            lastPlayInfo = String(format: "−%d élixir · rejeté — %d trames · bond %.1f dB (seuil %.1f)",
-                                  harvestDrop, available, LearnedSounds.lastJump,
-                                  LearnedSounds.jumpThreshold)
+            lastPlayInfo = String(format: "−%d élixir · fenêtre trop courte (%d trames)",
+                                  harvestDrop, treated.count)
             return
         }
         lastPlayInfo = String(format: "−%d élixir · capté · %d trames · bond %.1f dB · relief %d",

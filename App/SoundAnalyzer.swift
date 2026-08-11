@@ -44,7 +44,7 @@ final class SoundAnalyzer: ObservableObject {
     /// Appelé à chaque impulsion : sert à faire clignoter la fenêtre flottante.
     var onPulse: ((String) -> Void)?
 
-    private let maxFrames = 260                // environ 6 secondes
+    private let maxFrames = 320                // environ 6 secondes
     private var lastOnset = Date.distantPast
     private var pendingOnset: Onset?
     private var levelHistory: [Double] = []
@@ -56,6 +56,10 @@ final class SoundAnalyzer: ObservableObject {
     private var dropFrom = 0
     private var dropWindow: [[UInt8]] = []   // son capté au DÉBUT de la baisse
     private var dropAmbience: [[UInt8]] = [] // ambiance mesurée juste avant
+    // Récolte différée : le son de la troupe arrive après le déploiement
+    private var harvestAt: Date?
+    private var harvestDrop = 0
+    private var harvestAmbience: [[UInt8]] = []
     private var dropTo = 0
     private var recentElixir: [Int] = []  // historique court, pour retrouver le pic
     private var pendingIndex: Int?
@@ -153,7 +157,23 @@ final class SoundAnalyzer: ObservableObject {
     /// Surveille TA barre. Une baisse ne peut venir que d'une carte posée
     /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
     /// Appelé à chaque paquet reçu, que l'audio ait bougé ou non.
-    func observeElixir(_ raw: Int) { watchElixir(raw) }
+    func observeElixir(_ raw: Int) {
+        watchElixir(raw)
+        harvestIfDue()
+    }
+
+    /// Récupère le son une fois la troupe déployée.
+    private func harvestIfDue() {
+        guard let due = harvestAt, Date() >= due else { return }
+        harvestAt = nil
+
+        // 160 trames ≈ 1,85 s : couvre le déploiement le plus lent
+        let raw = Array(frames.suffix(160))
+        let treated = LearnedSounds.process(window: raw, ambience: harvestAmbience)
+        harvestAmbience = []
+        guard treated.count >= 12 else { return }
+        LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
+    }
 
     private func watchElixir(_ raw: Int) {
         guard raw >= 0 else { return }
@@ -187,16 +207,11 @@ final class SoundAnalyzer: ObservableObject {
                 // Une demi-seconde plus tard il est déjà passé.
                 // 60 trames : les 20 premières servent de profil d'ambiance,
                 // les 40 suivantes contiennent le son du déploiement.
-                // 80 trames : 20 d'ambiance, puis 60 pour couvrir le
-                // tintement ET le son de la carte qui le suit.
-                let all = Array(frames.suffix(80))
-                if all.count >= 60 {
-                    dropAmbience = Array(all.prefix(all.count - 60))
-                    dropWindow = Array(all.suffix(60))
-                } else {
-                    dropAmbience = []
-                    dropWindow = all
-                }
+                // Seule l'ambiance est prise ici. Le son de la troupe n'a
+                // pas encore été joué : il arrive pendant le déploiement,
+                // environ une seconde plus tard.
+                dropAmbience = Array(frames.suffix(24).prefix(20))
+                dropWindow = []
             }
             dropTo = now
             return
@@ -214,11 +229,13 @@ final class SoundAnalyzer: ObservableObject {
             guard drop >= 1, drop <= 9 else { return }
 
             // On réutilise l'instantané pris au début de la baisse
-            // Ambiance soustraite, porte de bruit, normalisation globale
-            let window = LearnedSounds.process(window: dropWindow,
-                                               ambience: dropAmbience)
-            dropWindow = []
+            // On programme la récolte pour dans 1,9 s : le temps que la
+            // troupe se déploie et fasse enfin son bruit.
+            harvestAt = Date().addingTimeInterval(1.9)
+            harvestDrop = drop
+            harvestAmbience = dropAmbience
             dropAmbience = []
+            let window: [[UInt8]] = []
             myPlays += 1
             lastMyPlayAt = Date()
             lastMyPlayDrop = drop
@@ -244,7 +261,6 @@ final class SoundAnalyzer: ObservableObject {
             }
             onsets.insert(entry, at: 0)
             if onsets.count > 30 { onsets.removeLast() }
-            LearnedSounds.shared.observeMyPlay(drop: drop, frames: window)
         }
     }
 
@@ -313,6 +329,8 @@ final class SoundAnalyzer: ObservableObject {
         dropStart = nil
         dropWindow = []
         dropAmbience = []
+        harvestAt = nil
+        harvestAmbience = []
         lastMyPlayAt = .distantPast
         capturing = false
         capture.removeAll()

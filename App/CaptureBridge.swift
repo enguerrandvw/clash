@@ -107,6 +107,10 @@ final class CaptureBridge: ObservableObject {
                     if let spec = j["spec"] as? String, !spec.isEmpty,
                        let raw = Data(base64Encoded: spec) {
                         let lev = (j["lev"] as? String).flatMap { Data(base64Encoded: $0) }
+                        if let pcmStr = j["pcm"] as? String, !pcmStr.isEmpty,
+                           let pcmData = Data(base64Encoded: pcmStr) {
+                            SoundAnalyzer.shared.ingestPCM([UInt8](pcmData))
+                        }
                         SoundAnalyzer.shared.ingest([UInt8](raw),
                                                     levels: [UInt8](lev ?? Data()),
                                                     bands: j["bands"] as? Int ?? 16,

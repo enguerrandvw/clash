@@ -30,6 +30,11 @@ struct LearnView: View {
                         .foregroundStyle(sound.myPlays > 0 ? .green : .orange)
                     Text("dernière : \(sound.lastPlayInfo)")
                         .font(.caption2).foregroundStyle(.secondary)
+                    Text("appris \(learned.autoLearned) · en attente \(learned.sentToPending)"
+                         + " · sans événement \(sound.rejectedNoEvent)"
+                         + " · hors deck \(learned.noCandidate)")
+                        .font(.caption2).foregroundStyle(.blue)
+                        .multilineTextAlignment(.center)
                 }
 
                 // --- 1. Ton deck ---

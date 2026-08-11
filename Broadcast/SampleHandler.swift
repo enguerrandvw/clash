@@ -25,6 +25,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     // un son à l'oreille, assez léger pour tenir dans un datagramme.
     private var pcm: [UInt8] = []
     private var pcmPhase = 0
+    private var pcmAcc: Float = 0
 
     // --- Analyse spectrale ---
     private let fftSize = 1024
@@ -269,12 +270,16 @@ class SampleHandler: RPBroadcastSampleHandler {
                 let v = Float(p[i]) / 32768.0
                 pending.append(v)
 
-                // Une valeur sur quatre : 44100 → 11025 Hz
+                // 44100 → 11025 Hz. On MOYENNE quatre échantillons au lieu
+                // d'en jeter trois : sans ce filtrage, tout le contenu au-dessus
+                // de 5,5 kHz se replie dans les graves et devient du sifflement.
+                pcmAcc += v
                 pcmPhase += 1
                 if pcmPhase >= 4 {
-                    pcmPhase = 0
-                    let c = max(-1, min(1, v))
+                    let c = max(-1, min(1, pcmAcc / 4))
                     pcm.append(UInt8(Int((c + 1) * 127.5)))
+                    pcmPhase = 0
+                    pcmAcc = 0
                 }
                 i += step
             }

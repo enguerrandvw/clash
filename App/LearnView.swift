@@ -39,6 +39,10 @@ struct LearnView: View {
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(capture.audioPeakMax > 0.01 ? .green : .red)
 
+                    Text("tampon \(sound.framesInBuffer) trames · reçues \(sound.totalFrames) au total")
+                        .font(.caption2)
+                        .foregroundStyle(sound.framesInBuffer > 100 ? .green : .red)
+
                     Text("appris \(learned.autoLearned) · en attente \(learned.sentToPending)"
                          + " · sans événement \(sound.rejectedNoEvent)"
                          + " · hors deck \(learned.noCandidate)")

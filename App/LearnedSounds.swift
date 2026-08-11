@@ -188,13 +188,20 @@ final class LearnedSounds: ObservableObject {
     /// 2. porte de bruit sur les tranches trop faibles,
     /// 3. normalisation sur le pic de TOUTE la fenêtre, ce qui préserve
     ///    l'enveloppe du son — l'attaque puis le déclin.
+    /// Bond d'énergie minimal pour considérer qu'un son a démarré.
+    nonisolated(unsafe) static var jumpThreshold = 3.0
+    /// Dernier bond mesuré, pour pouvoir régler le seuil au lieu de le deviner.
+    nonisolated(unsafe) static var lastJump = 0.0
+
     static func process(window: [[UInt8]], ambience: [[UInt8]]) -> [[UInt8]] {
         guard let bands = window.first?.count, bands > 0, window.count >= 20
         else { return window }
 
-        // Énergie de chaque tranche, en décibels
+        // Énergie de chaque tranche : on prend la BANDE LA PLUS FORTE.
+        // Un son de carte concentre son énergie sur quelques fréquences ;
+        // moyenné sur 32 bandes, un pic net devient imperceptible.
         let energy: [Double] = window.map { f in
-            f.reduce(0.0) { $0 + toDb($1) } / Double(max(1, f.count))
+            toDb(f.max() ?? 0)
         }
 
         // On cherche l'ÉVÉNEMENT : l'endroit où l'énergie bondit le plus
@@ -210,7 +217,8 @@ final class LearnedSounds: ObservableObject {
 
         // Pas d'événement franc : on renvoie une fenêtre vide plutôt que
         // du bruit, pour que l'enregistrement soit écarté.
-        guard bestIdx >= 0, bestJump > 1.5 else { return [] }
+        lastJump = bestJump
+        guard bestIdx >= 0, bestJump > jumpThreshold else { return [] }
 
         // 60 tranches (≈ 0,70 s) : de quoi contenir en ENTIER les sons
         // longs comme l'Arc-X ou La Bûche, dont la durée est justement

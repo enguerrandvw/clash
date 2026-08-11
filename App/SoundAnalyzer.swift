@@ -42,7 +42,12 @@ final class SoundAnalyzer: ObservableObject {
     /// Dernière fenêtre traitée, pour inspection visuelle
     @Published var lastProcessed: [[UInt8]] = []
     @Published var lastRaw: [[UInt8]] = []
+    @Published var lastAudio: [UInt8] = []
     @Published var bandsSeen = 0
+    /// Audio brut à 11025 Hz, quelques secondes glissantes
+    private var pcmBuffer: [UInt8] = []
+    private let pcmRate = 11025
+
     @Published var framesInBuffer = 0
     @Published var totalFrames = 0
     @Published var classifyOK = 0
@@ -166,6 +171,13 @@ final class SoundAnalyzer: ObservableObject {
     /// Surveille TA barre. Une baisse ne peut venir que d'une carte posée
     /// par toi : dès qu'elle se stabilise, on enregistre le son qui précède.
     /// Appelé à chaque paquet reçu, que l'audio ait bougé ou non.
+    /// Reçoit l'audio brut décimé, pour pouvoir le réécouter ensuite.
+    func ingestPCM(_ samples: [UInt8]) {
+        pcmBuffer.append(contentsOf: samples)
+        let maxLen = pcmRate * 4
+        if pcmBuffer.count > maxLen { pcmBuffer.removeFirst(pcmBuffer.count - maxLen) }
+    }
+
     func observeElixir(_ raw: Int) {
         watchElixir(raw)
         harvestIfDue()
@@ -179,6 +191,7 @@ final class SoundAnalyzer: ObservableObject {
         // 160 trames ≈ 1,85 s : couvre le déploiement le plus lent
         let available = frames.count
         let raw = Array(frames.suffix(160))
+        lastAudio = Array(pcmBuffer.suffix(pcmRate * 2))
         let treated = LearnedSounds.process(window: raw, ambience: harvestAmbience)
         harvestAmbience = []
         lastRaw = Array(raw.suffix(50))
@@ -193,7 +206,10 @@ final class SoundAnalyzer: ObservableObject {
         lastPlayInfo = String(format: "−%d élixir · capté · %d trames · bond %.1f dB · relief %d",
                               harvestDrop, available, LearnedSounds.lastJump,
                               Int(variation(treated)))
-        LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated)
+        // Les deux dernières secondes d'audio brut accompagnent l'exemple :
+        // c'est ce qui permettra de le vérifier à l'oreille.
+        let audio = Array(pcmBuffer.suffix(pcmRate * 2))
+        LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated, audio: audio)
     }
 
     private func watchElixir(_ raw: Int) {

@@ -21,6 +21,11 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var rowProfile: [Int] = []
     private var digitB64 = ""          // imagette du chiffre d'élixir
 
+    // Audio brut décimé à 11025 Hz sur 8 bits : assez pour reconnaître
+    // un son à l'oreille, assez léger pour tenir dans un datagramme.
+    private var pcm: [UInt8] = []
+    private var pcmPhase = 0
+
     // --- Analyse spectrale ---
     private let fftSize = 1024
     private let bandCount = 32
@@ -261,9 +266,19 @@ class SampleHandler: RPBroadcastSampleHandler {
             let step = nonInterleaved ? 1 : channels
             var i = 0
             while i < n {
-                pending.append(Float(p[i]) / 32768.0)
+                let v = Float(p[i]) / 32768.0
+                pending.append(v)
+
+                // Une valeur sur quatre : 44100 → 11025 Hz
+                pcmPhase += 1
+                if pcmPhase >= 4 {
+                    pcmPhase = 0
+                    let c = max(-1, min(1, v))
+                    pcm.append(UInt8(Int((c + 1) * 127.5)))
+                }
                 i += step
             }
+            if pcm.count > 11025 * 3 { pcm.removeFirst(pcm.count - 11025 * 3) }
             analysePending()
         }
         return min(1, peak)
@@ -372,6 +387,8 @@ class SampleHandler: RPBroadcastSampleHandler {
             "digit": digitB64,
             "spec": Data(frames).base64EncodedString(),
             "lev": Data(levels).base64EncodedString(),
+            "pcm": Data(pcm).base64EncodedString(),
+            "pcmRate": 11025,
             "bands": bandCount,
             "bestRowFrac": bestRowFrac,
             "pixelFormat": pixelFormat,
@@ -382,6 +399,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         audioPeak = 0
         frames.removeAll(keepingCapacity: true)
         levels.removeAll(keepingCapacity: true)
+        pcm.removeAll(keepingCapacity: true)
         guard let d = try? JSONSerialization.data(withJSONObject: state) else { return }
         conn?.send(content: d, completion: .idempotent)
     }

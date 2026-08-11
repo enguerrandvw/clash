@@ -124,6 +124,16 @@ struct LearnView: View {
                     Text(SpectroStats(sound.lastRaw).summary)
                         .font(.caption2).foregroundStyle(.secondary)
 
+                    Button {
+                        AudioPlayback.shared.play(sound.lastAudio)
+                    } label: {
+                        Label("Écouter la dernière capture",
+                              systemImage: "speaker.wave.2.fill")
+                            .font(.caption.weight(.medium))
+                    }
+                    .disabled(sound.lastAudio.count < 100)
+                    .padding(.top, 4)
+
                     Text("Après soustraction et normalisation")
                         .font(.caption.weight(.medium)).padding(.top, 4)
                     SpectroView(frames: sound.lastProcessed, height: 90)
@@ -170,6 +180,14 @@ struct LearnView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            Button {
+                                AudioPlayback.shared.play(p.audio)
+                            } label: {
+                                Label("Écouter", systemImage: "play.circle.fill")
+                                    .font(.caption)
+                            }
+                            .disabled(p.audio.count < 100)
+
                             HStack(spacing: 6) {
                                 ForEach(p.candidates) { c in
                                     Button {
@@ -219,6 +237,17 @@ struct LearnView: View {
                                     SpectroView(frames: ex, height: 44)
                                 }
                                 HStack {
+                                    Button {
+                                        if let a = learned.audio(c.id, at: i) {
+                                            AudioPlayback.shared.play(a)
+                                        }
+                                    } label: {
+                                        Image(systemName: "play.circle.fill")
+                                            .font(.title3)
+                                            .foregroundStyle(
+                                                (learned.audio(c.id, at: i)?.count ?? 0) > 100
+                                                ? .blue : .gray)
+                                    }
                                     Text("#\(i + 1)").font(.caption2.monospaced())
                                     if let s = learned.consistency(c.id, at: i) {
                                         Text("cohérence \(Int(s * 100)) %")

@@ -266,67 +266,30 @@ struct LearnView: View {
                     Text(learned.lastMessage)
                         .font(.caption2).foregroundStyle(.blue)
 
-                    ForEach(learned.myDeck.filter { learned.count(for: $0.id) > 0 }) { c in
-                        VStack(alignment: .leading, spacing: 3) {
-                            HStack(spacing: 8) {
-                                Text(c.name).font(.caption.weight(.medium))
-                                if let sep = learned.separation(for: c.id) {
-                                    let gap = sep.own - sep.other
-                                    Text("propre \(Int(sep.own * 100)) % · confusion \(Int(sep.other * 100)) % (\(sep.with))")
-                                        .font(.caption2)
-                                        .foregroundStyle(gap > 0.12 ? .green
-                                                         : (gap > 0.05 ? .orange : .red))
-                                }
+                    // Résumé compact : afficher les spectrogrammes de dizaines
+                    // d'exemples rendait l'écran inutilisable. On ne garde que
+                    // l'essentiel ; les sons restent en mémoire et partent
+                    // intégralement à l'export.
+                    ForEach(learned.learnedCards) { c in
+                        HStack(spacing: 8) {
+                            Text(c.name).font(.caption.weight(.medium))
+                            Spacer()
+                            if let sep = learned.separation(for: c.id) {
+                                let gap = sep.own - sep.other
+                                Text("\(Int(sep.own * 100))/\(Int(sep.other * 100))")
+                                    .font(.caption2.monospacedDigit())
+                                    .foregroundStyle(gap > 0.12 ? .green
+                                                     : (gap > 0.05 ? .orange : .red))
                             }
-                            ForEach(0..<learned.count(for: c.id), id: \.self) { i in
-                                if let ex = learned.example(c.id, at: i) {
-                                    SpectroView(frames: ex, height: 44)
-
-                                    // Référence du dépôt la plus proche :
-                                    // on la montre pour comparer à l'œil.
-                                    if let hit = RefMatcher.cachedBest(
-                                            key: "\(c.id)-\(i)", capture: ex),
-                                       let rf = RefMatcher.frames(for: hit.refCard) {
-                                        Text("réf. la plus proche : "
-                                             + (hit.card?.name
-                                                ?? hit.refCard.replacingOccurrences(
-                                                    of: "_", with: " "))
-                                             + " \(Int(hit.score * 100)) %")
-                                            .font(.caption2)
-                                            .foregroundStyle(
-                                                hit.card?.id == c.id ? .green : .orange)
-                                        SpectroView(frames: rf, height: 34)
-                                            .opacity(0.85)
-                                    }
-                                }
-                                HStack {
-                                    Button {
-                                        if let a = learned.audio(c.id, at: i) {
-                                            AudioPlayback.shared.play(a)
-                                        }
-                                    } label: {
-                                        Image(systemName: "play.circle.fill")
-                                            .font(.title3)
-                                            .foregroundStyle(
-                                                (learned.audio(c.id, at: i)?.count ?? 0) > 100
-                                                ? .blue : .gray)
-                                    }
-                                    Text("#\(i + 1)").font(.caption2.monospaced())
-                                    if let s = learned.consistency(c.id, at: i) {
-                                        Text("cohérence \(Int(s * 100)) %")
-                                            .font(.caption2)
-                                            .foregroundStyle(s > 0.75 ? .green
-                                                             : (s > 0.55 ? .orange : .red))
-                                    }
-                                    Spacer()
-                                    Button { learned.remove(c.id, at: i) } label: {
-                                        Image(systemName: "trash").font(.caption2)
-                                            .foregroundStyle(.red)
-                                    }
-                                }
+                            Text("\(learned.usableCount(for: c.id))/\(learned.count(for: c.id))")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.secondary)
+                            Button { learned.forget(c.id) } label: {
+                                Image(systemName: "trash").font(.caption2)
+                                    .foregroundStyle(.red)
                             }
                         }
-                        .padding(.horizontal, 12).padding(.vertical, 7)
+                        .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(Color.gray.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }

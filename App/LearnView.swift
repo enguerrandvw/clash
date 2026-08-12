@@ -50,7 +50,7 @@ struct LearnView: View {
                         .foregroundStyle(.purple)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
-                    Text("\(SoundRefs.all.count) sons de référence")
+                    Text("\(SoundTemplates.all.count) motifs de référence")
                         .font(.caption2).foregroundStyle(.secondary)
 
                     Text(RefMatcher.isReady
@@ -270,6 +270,23 @@ struct LearnView: View {
                             ForEach(0..<learned.count(for: c.id), id: \.self) { i in
                                 if let ex = learned.example(c.id, at: i) {
                                     SpectroView(frames: ex, height: 44)
+
+                                    // Référence du dépôt la plus proche :
+                                    // on la montre pour comparer à l'œil.
+                                    if let hit = RefMatcher.cachedBest(
+                                            key: "\(c.id)-\(i)", capture: ex),
+                                       let rf = RefMatcher.frames(for: hit.refCard) {
+                                        Text("réf. la plus proche : "
+                                             + (hit.card?.name
+                                                ?? hit.refCard.replacingOccurrences(
+                                                    of: "_", with: " "))
+                                             + " \(Int(hit.score * 100)) %")
+                                            .font(.caption2)
+                                            .foregroundStyle(
+                                                hit.card?.id == c.id ? .green : .orange)
+                                        SpectroView(frames: rf, height: 34)
+                                            .opacity(0.85)
+                                    }
                                 }
                                 HStack {
                                     Button {

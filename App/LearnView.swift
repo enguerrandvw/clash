@@ -45,6 +45,21 @@ struct LearnView: View {
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
 
+                    Text("Motif reconnu : \(sound.lastTemplateHit)")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.purple)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 12)
+                    Text("\(SoundTemplates.all.count) motifs de référence")
+                        .font(.caption2).foregroundStyle(.secondary)
+
+                    Text(RefMatcher.isReady
+                         ? "\(SoundRefs.all.count) sons de référence · \(RefMatcher.cardByRef.count) reliés à une carte"
+                         : "Aucun son de référence chargé")
+                        .font(.caption)
+                        .foregroundStyle(RefMatcher.isReady ? .green : .orange)
+                        .multilineTextAlignment(.center)
+
                     Text("débit audio : \(sound.pcmRateMeasured) éch/s (attendu 11025)")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(sound.pcmRateMeasured > 9000 ? .green

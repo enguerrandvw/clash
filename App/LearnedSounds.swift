@@ -670,10 +670,37 @@ final class LearnedSounds: ObservableObject {
         guard examples.count >= 3,
               let bands = examples.first?.first?.count else { return nil }
 
-        // On recale tous les exemples sur le premier avant de chercher ce
-        // qu'ils ont en commun.
-        guard let ref = examples.first else { return nil }
-        let set = [ref] + examples.dropFirst().map { aligned($0, onto: ref) }
+        // 1. Choisir la référence : l'exemple qui ressemble le plus aux
+        //    autres, et non le premier venu. S'aligner sur un enregistrement
+        //    raté ferait converger tout le monde vers du bruit.
+        var refIdx = 0
+        if examples.count >= 3 {
+            var bestSum = -1e9
+            for (i, a) in examples.enumerated() {
+                var sum = 0.0
+                for (j, b) in examples.enumerated() where i != j {
+                    sum += correlation(a, b)
+                }
+                if sum > bestSum { bestSum = sum; refIdx = i }
+            }
+        }
+        let ref = examples[refIdx]
+
+        // 2. Ne garder que le noyau cohérent. Certains enregistrements ont
+        //    manqué le bon instant ou sont noyés sous une action voisine ;
+        //    les inclure ferait exploser la variance et effacerait le son
+        //    commun que portent les autres.
+        var scored = examples.indices.map { i -> (idx: Int, score: Double) in
+            (i, i == refIdx ? 1.0 : correlation(examples[i], ref))
+        }
+        scored.sort { $0.score > $1.score }
+        let keep = max(3, Int((Double(examples.count) * 0.6).rounded()))
+        let coreIdx = scored.prefix(keep).map(\.idx)
+
+        // 3. Recaler le noyau sur la référence
+        let set = coreIdx.map { i in
+            i == refIdx ? ref : aligned(examples[i], onto: ref)
+        }
 
         let frames = set.map(\.count).min() ?? 0
         guard frames >= 20 else { return nil }

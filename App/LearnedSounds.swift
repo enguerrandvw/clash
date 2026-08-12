@@ -35,7 +35,47 @@ final class LearnedSounds: ObservableObject {
     /// Conservé pour l'ancien mode manuel
     @Published var target: Card?
 
-    init() { load(); loadDeck() }
+    init() { load(); loadDeck(); loadBanked() }
+
+    /// Fusionne la banque figée dans l'app avec ce qui est stocké localement.
+    /// Les exemples embarqués ne sont ajoutés que s'ils manquent, pour ne
+    /// jamais écraser un enregistrement plus récent.
+    private func loadBanked() {
+        let bands = SoundModel.bands
+        for (id, list) in BankedSounds.data {
+            guard store[id] == nil || store[id]!.isEmpty else { continue }
+            var examples: [[[UInt8]]] = []
+            for b64 in list {
+                guard let raw = Data(base64Encoded: b64),
+                      raw.count % bands == 0 else { continue }
+                let bytes = [UInt8](raw)
+                var frames: [[UInt8]] = []
+                for i in stride(from: 0, to: bytes.count, by: bands) {
+                    frames.append(Array(bytes[i..<(i + bands)]))
+                }
+                if frames.count >= 30 { examples.append(frames) }
+            }
+            if !examples.isEmpty { store[id] = examples }
+        }
+    }
+
+    /// Produit le contenu d'un fichier Swift à déposer sur GitHub.
+    func exportSwift() -> String {
+        var out = "// Banque de sons figée dans l'app.\n"
+        out += "// Généré depuis l'écran d'apprentissage.\n\n"
+        out += "enum BankedSounds {\n"
+        out += "    static let data: [String: [String]] = [\n"
+        for (id, examples) in store.sorted(by: { $0.key < $1.key }) {
+            let encoded = examples.map { ex in
+                "\"" + Data(ex.flatMap { $0 }).base64EncodedString() + "\""
+            }
+            out += "        \"\(id)\": [\n"
+            for e in encoded { out += "            \(e),\n" }
+            out += "        ],\n"
+        }
+        out += "    ]\n}\n"
+        return out
+    }
 
     // MARK: - Deck
 
@@ -96,6 +136,13 @@ final class LearnedSounds: ObservableObject {
     var isUsable: Bool { cardCount >= 2 }
 
     func count(for id: String) -> Int { store[id]?.count ?? 0 }
+
+    /// Exemples jugés assez cohérents pour servir à la reconnaissance.
+    func usableCount(for id: String) -> Int {
+        guard let list = store[id] else { return 0 }
+        if list.count < 3 { return list.count }
+        return (0..<list.count).filter { (consistency(id, at: $0) ?? 1) >= 0.60 }.count
+    }
 
     /// Un exemple précis, pour inspection visuelle.
     func example(_ id: String, at index: Int) -> [[UInt8]]? {
@@ -275,10 +322,16 @@ final class LearnedSounds: ObservableObject {
         for row in tail { for v in row { peak = max(peak, v) } }
         guard peak > 2 else { return [] }
 
+        // On ne garde que le sommet de l'événement : tout ce qui est en
+        // dessous de 45 % du pic est mis à zéro. Quand la partie est agitée,
+        // le retrait du fond laisse encore beaucoup de matière parasite ;
+        // ce seuil ne conserve que le son dominant.
+        let floor = peak * 0.45
         var out: [[UInt8]] = []
         for row in tail {
             out.append(row.map { v in
-                UInt8(max(0, min(255, Int(v / peak * 255))))
+                v < floor ? 0
+                    : UInt8(max(0, min(255, Int((v - floor) / (peak - floor) * 255))))
             })
         }
         return out
@@ -301,10 +354,21 @@ final class LearnedSounds: ObservableObject {
         var second: (String, Double) = ("", -2)
 
         for (id, examples) in store {
+            // On écarte les exemples trop peu cohérents avec les autres :
+            // ce sont des captures polluées par le bruit de combat, et
+            // les garder dégraderait la reconnaissance.
+            var usable: [[[UInt8]]] = []
+            for (i, ex) in examples.enumerated() {
+                if examples.count < 3 || (consistency(id, at: i) ?? 1) >= 0.60 {
+                    usable.append(ex)
+                }
+            }
+            if usable.isEmpty { usable = examples }
+
             // Moyenne des deux meilleures correspondances : plus stable
             // qu'un simple record, qui favorise les cartes ayant le plus
             // d'exemples enregistrés.
-            var scores = examples.map { correlation(probe, $0) }
+            var scores = usable.map { correlation(probe, $0) }
             scores.sort(by: >)
             let take = min(2, scores.count)
             let bestForCard = scores.prefix(take).reduce(0, +) / Double(take)

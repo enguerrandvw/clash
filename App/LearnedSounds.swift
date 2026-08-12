@@ -17,6 +17,14 @@ final class LearnedSounds: ObservableObject {
     /// Ton deck : 8 cartes déclarées une fois pour toutes.
     @Published var myDeck: [Card] = []
 
+    /// Toutes les cartes ayant au moins un exemple, qu'elles soient ou non
+    /// dans le deck déclaré. Sans ça, une banque chargée depuis le fichier
+    /// compilé resterait invisible tant que le deck n'est pas redéclaré.
+    var learnedCards: [Card] {
+        store.keys.compactMap { id in CardCatalog.all.first { $0.id == id } }
+            .sorted { $0.cost == $1.cost ? $0.name < $1.name : $0.cost < $1.cost }
+    }
+
     /// Sons captés dont on ignore encore la carte, en attente d'étiquetage.
     struct Pending: Identifiable {
         let id = UUID()
@@ -42,6 +50,11 @@ final class LearnedSounds: ObservableObject {
     /// jamais écraser un enregistrement plus récent.
     private func loadBanked() {
         let bands = SoundModel.bands
+        if myDeck.isEmpty, !BankedSounds.deck.isEmpty {
+            setDeck(BankedSounds.deck.compactMap { id in
+                CardCatalog.all.first { $0.id == id }
+            })
+        }
         for (id, list) in BankedSounds.data {
             guard store[id] == nil || store[id]!.isEmpty else { continue }
             var examples: [[[UInt8]]] = []
@@ -64,6 +77,8 @@ final class LearnedSounds: ObservableObject {
         var out = "// Banque de sons figée dans l'app.\n"
         out += "// Généré depuis l'écran d'apprentissage.\n\n"
         out += "enum BankedSounds {\n"
+        let deckIds = myDeck.map { "\"\($0.id)\"" }.joined(separator: ", ")
+        out += "    static let deck: [String] = [\(deckIds)]\n\n"
         out += "    static let data: [String: [String]] = [\n"
         for (id, examples) in store.sorted(by: { $0.key < $1.key }) {
             let encoded = examples.map { ex in

@@ -218,8 +218,12 @@ final class SoundAnalyzer: ObservableObject {
 
         // Recherche des motifs de référence dans la capture brute
         if let hit = RefMatcher.best(in: raw) {
-            let name = hit.known?.name
-                ?? hit.card.replacingOccurrences(of: "_", with: " ")
+            let name = hit.card?.name
+                ?? hit.refCard.replacingOccurrences(of: "_", with: " ")
+            lastPlayInfo = "\(name) \(Int(hit.score * 100))%"
+                + (hit.runnerUp.isEmpty ? "" : " · puis \(hit.runnerUp)")
+        }
+
             lastTemplateHit = "\(name) \(Int(hit.score * 100))%"
                 + (hit.runnersUp.isEmpty ? "" : " · puis \(hit.runnersUp)")
         } else {

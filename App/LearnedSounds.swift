@@ -346,6 +346,60 @@ final class LearnedSounds: ObservableObject {
     }
 
     /// Compare aux exemples appris. Retourne la carte la plus ressemblante.
+    /// Résultat d'un test de reconnaissance en conditions réelles.
+    struct TestReport {
+        var total = 0
+        var correct = 0
+        var perCard: [String: (ok: Int, n: Int)] = [:]
+        var confusedWith: [String: [String: Int]] = [:]
+        var rate: Double { total > 0 ? Double(correct) / Double(total) : 0 }
+    }
+
+    /// Teste la reconnaissance honnêtement : chaque exemple est présenté à
+    /// l'app COMME S'IL ÉTAIT INCONNU, en le retirant de la banque. C'est
+    /// la seule mesure qui prédise le comportement réel en partie.
+    func selfTest() -> TestReport {
+        var r = TestReport()
+        let ids = Array(store.keys)
+        guard ids.count >= 2 else { return r }
+
+        for id in ids {
+            guard let examples = store[id] else { continue }
+            for (i, probe) in examples.enumerated() {
+
+                // Meilleur score de chaque carte, l'exemple testé exclu
+                var best = ""
+                var bestScore = -1.0
+                for other in ids {
+                    guard let list = store[other] else { continue }
+                    var scores: [Double] = []
+                    for (j, ex) in list.enumerated() {
+                        if other == id && j == i { continue }   // on se cache
+                        scores.append(correlation(probe, ex))
+                    }
+                    guard !scores.isEmpty else { continue }
+                    scores.sort(by: >)
+                    let sc = scores.count >= 2
+                        ? (scores[0] + scores[1]) / 2 : scores[0]
+                    if sc > bestScore { bestScore = sc; best = other }
+                }
+                guard !best.isEmpty else { continue }
+
+                r.total += 1
+                var cell = r.perCard[id] ?? (0, 0)
+                cell.n += 1
+                if best == id {
+                    r.correct += 1
+                    cell.ok += 1
+                } else {
+                    r.confusedWith[id, default: [:]][best, default: 0] += 1
+                }
+                r.perCard[id] = cell
+            }
+        }
+        return r
+    }
+
     func recognise(_ frames: [[UInt8]]) -> Hit? {
         guard isUsable, frames.count >= 30 else { return nil }
         let probe = frames

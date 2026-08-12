@@ -28,6 +28,16 @@ jobs:
       - name: Installer numpy
         run: pip3 install --quiet --break-system-packages numpy || pip3 install --quiet numpy
 
+      - name: Générer les motifs de référence
+        run: |
+          python3 Tools/make_templates.py /tmp/sfx App/SoundTemplates.swift
+          grep -c "SoundTemplate(card:" App/SoundTemplates.swift
+
+      - name: Calculer les empreintes de référence
+        run: |
+          python3 Tools/make_refs.py /tmp/sfx App/SoundRefs.swift
+          grep -c "SoundRef(card:" App/SoundRefs.swift
+
       - name: Entraîner le classificateur de sons
         run: |
           python3 Tools/train_sound_model.py /tmp/sfx App/SoundModel.swift

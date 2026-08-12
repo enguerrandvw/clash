@@ -43,6 +43,8 @@ final class SoundAnalyzer: ObservableObject {
     @Published var lastProcessed: [[UInt8]] = []
     @Published var lastRaw: [[UInt8]] = []
     @Published var lastAudio: [UInt8] = []
+    /// Résultat de la recherche de motifs sur la dernière capture
+    @Published var lastTemplateHit = "—"
     @Published var bandsSeen = 0
     /// Audio brut à 11025 Hz, quelques secondes glissantes
     private var pcmBuffer: [UInt8] = []
@@ -143,7 +145,12 @@ final class SoundAnalyzer: ObservableObject {
             let treated = LearnedSounds.process(
                 window: capture,
                 ambience: Array(frames.suffix(60).prefix(20)))
-            if let hit = learn.recognise(treated) {
+            if let ref = RefMatcher.best(in: treated), ref.score > 0.35 {
+                pct = Int(ref.score * 100)
+                name = ref.card?.name
+                    ?? ref.refCard.replacingOccurrences(of: "_", with: " ")
+                p.extra = ref.runnerUp
+            } else if let hit = learn.recognise(treated) {
                 pct = Int(hit.score * 100)
                 name = hit.score >= minScore ? hit.card.name : "?"
                 p.extra = hit.runnerUp
@@ -208,6 +215,16 @@ final class SoundAnalyzer: ObservableObject {
         let treated = LearnedSounds.process(window: raw, ambience: harvestAmbience)
         harvestAmbience = []
         lastRaw = Array(raw.suffix(50))
+
+        // Recherche des motifs de référence dans la capture brute
+        if let hit = TemplateMatcher.search(raw) {
+            let name = hit.known?.name
+                ?? hit.card.replacingOccurrences(of: "_", with: " ")
+            lastTemplateHit = "\(name) \(Int(hit.score * 100))%"
+                + (hit.runnersUp.isEmpty ? "" : " · puis \(hit.runnersUp)")
+        } else {
+            lastTemplateHit = "aucun motif"
+        }
         lastProcessed = treated
         guard treated.count >= 30 else {
             rejectedNoEvent += 1

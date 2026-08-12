@@ -217,7 +217,7 @@ final class SoundAnalyzer: ObservableObject {
         lastRaw = Array(raw.suffix(50))
 
         // Recherche des motifs de référence dans la capture brute
-        if let hit = TemplateMatcher.search(raw) {
+        if let hit = RefMatcher.best(in: raw) {
             let name = hit.known?.name
                 ?? hit.card.replacingOccurrences(of: "_", with: " ")
             lastTemplateHit = "\(name) \(Int(hit.score * 100))%"

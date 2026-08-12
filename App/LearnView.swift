@@ -226,6 +226,11 @@ struct LearnView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
+                            // Le spectrogramme accompagne l'écoute : deux sons
+                            // proches à l'oreille ont souvent une allure
+                            // nettement différente à l'image.
+                            SpectroView(frames: p.frames, height: 40)
+
                             Button {
                                 AudioPlayback.shared.play(p.audio)
                             } label: {

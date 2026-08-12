@@ -607,11 +607,60 @@ final class LearnedSounds: ObservableObject {
         return m
     }
 
+    /// Recale un exemple sur une référence, puis renvoie la version alignée.
+    ///
+    /// C'est indispensable pour les sons brefs : la baisse d'élixir est
+    /// détectée avec un retard variable, si bien qu'un son de huit trames
+    /// peut tomber à des endroits différents d'un enregistrement à l'autre.
+    /// Sans recalage, deux exemples ne se superposent jamais et paraissent
+    /// n'avoir aucune case en commun — alors qu'ils portent le même son.
+    private func aligned(_ ex: [[UInt8]], onto ref: [[UInt8]]) -> [[UInt8]] {
+        var bestShift = 0
+        var bestScore = -2.0
+        for shift in -20...20 {
+            let x = shift >= 0 ? Array(ex.dropFirst(shift)) : ex
+            let y = shift >= 0 ? ref : Array(ref.dropFirst(-shift))
+            let n = min(x.count, y.count)
+            guard n >= 20 else { continue }
+            var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, k = 0.0
+            for i in 0..<n {
+                let ra = x[i], rb = y[i]
+                for j in 0..<min(ra.count, rb.count) {
+                    let u = Double(ra[j]), v = Double(rb[j])
+                    sx += u; sy += v; sxx += u * u; syy += v * v; sxy += u * v
+                    k += 1
+                }
+            }
+            guard k > 16 else { continue }
+            let num = sxy - sx * sy / k
+            let den = ((sxx - sx * sx / k) * (syy - sy * sy / k)).squareRoot()
+            if den > 1e-6, num / den > bestScore {
+                bestScore = num / den; bestShift = shift
+            }
+        }
+        guard bestShift != 0 else { return ex }
+        let bands = ex.first?.count ?? 0
+        let blank = [UInt8](repeating: 0, count: bands)
+        if bestShift > 0 {
+            return Array(ex.dropFirst(bestShift))
+                 + Array(repeating: blank, count: bestShift)
+        } else {
+            return Array(repeating: blank, count: -bestShift)
+                 + Array(ex.dropLast(-bestShift))
+        }
+    }
+
     /// Même calcul, sur un ensemble d'exemples quelconque.
     func maskOf(_ examples: [[[UInt8]]]) -> [[Double]]? {
         guard examples.count >= 3,
               let bands = examples.first?.first?.count else { return nil }
-        let frames = examples.map(\.count).min() ?? 0
+
+        // On recale tous les exemples sur le premier avant de chercher ce
+        // qu'ils ont en commun.
+        guard let ref = examples.first else { return nil }
+        let set = [ref] + examples.dropFirst().map { aligned($0, onto: ref) }
+
+        let frames = set.map(\.count).min() ?? 0
         guard frames >= 20 else { return nil }
 
         var m = [[Double]](repeating: [Double](repeating: 0, count: bands),
@@ -619,13 +668,16 @@ final class LearnedSounds: ObservableObject {
         for t in 0..<frames {
             for b in 0..<bands {
                 var vals: [Double] = []
-                for ex in examples where ex[t].count > b {
+                for ex in set where ex[t].count > b {
                     vals.append(Double(ex[t][b]))
                 }
                 guard vals.count >= 3 else { continue }
                 let mean = vals.reduce(0, +) / Double(vals.count)
                 // Une case vide n'apprend rien, même si elle est stable.
-                guard mean > 12 else { continue }
+                // Le seuil reste bas : les petites troupes ont un son faible,
+                // et l'écarter reviendrait à décider d'avance qu'elles sont
+                // inreconnaissables.
+                guard mean > 5 else { continue }
                 let varr = vals.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
                     / Double(vals.count)
                 // Écart-type rapporté à la moyenne : petit = constant.

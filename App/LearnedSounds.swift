@@ -29,6 +29,7 @@ final class LearnedSounds: ObservableObject {
     private func invalidateStats() {
         statsCache.removeAll()
         maskCache.removeAll()
+        selfLevelCache.removeAll()
         RefMatcher.clearCache()
     }
 
@@ -438,10 +439,6 @@ final class LearnedSounds: ObservableObject {
             for (i, probe) in examples.enumerated() {
 
                 // Meilleur score de chaque carte, l'exemple testé exclu
-                // Les deux méthodes ne produisent pas des scores sur la même
-                // échelle : les mélanger d'une carte à l'autre fausserait la
-                // comparaison. On décide donc une fois pour toutes, selon que
-                // TOUTES les cartes disposent d'un masque exploitable.
                 let useMask = ids.allSatisfy { other in
                     let pool = (other == id)
                         ? (store[other] ?? []).enumerated()
@@ -497,8 +494,13 @@ final class LearnedSounds: ObservableObject {
         var best: (String, Double) = ("", -2)
         var second: (String, Double) = ("", -2)
 
-        // On n'emploie le masque que si toutes les cartes en ont un :
-        // les scores des deux méthodes ne sont pas comparables entre eux.
+        // Score brut, sans normalisation. Rapporter chaque score au niveau
+        // interne de sa carte avantageait les cartes incohérentes : leur
+        // diviseur étant faible, elles remportaient tout. Essayé, mesuré,
+        // écarté — la précision était tombée de 57 % à 29 %.
+        //
+        // Le masque n'est employé que si TOUTES les cartes en ont un, faute
+        // de quoi les échelles ne sont pas comparables.
         let useMask = store.keys.allSatisfy { mask(for: $0) != nil }
 
         for (id, examples) in store {
@@ -568,6 +570,26 @@ final class LearnedSounds: ObservableObject {
     /// Nombre de cases exploitables du masque d'une carte, et poids moyen.
     /// C'est la mesure directe de « combien de son propre reste-t-il une fois
     /// le décor écarté ». Une carte pauvre ici ne pourra pas être reconnue.
+    /// Niveau que la méthode pondérée atteint entre deux exemples de la
+    /// MÊME carte. Sert d'étalon : un score de 0,6 ne veut pas dire la même
+    /// chose pour une carte dont les exemples se ressemblent à 0,9 et pour
+    /// une autre où ils plafonnent à 0,65.
+    private var selfLevelCache: [String: Double] = [:]
+
+    func maskedSelfLevel(_ id: String) -> Double {
+        if let v = selfLevelCache[id] { return v }
+        guard let list = store[id], list.count >= 2,
+              let m = mask(for: id), let ref = list.first else { return 0 }
+        var scores: [Double] = []
+        for ex in list.dropFirst() {
+            let v = maskedScore(ex, against: ref, weights: m)
+            if v > -1.5 { scores.append(v) }
+        }
+        let v = scores.isEmpty ? 0 : scores.reduce(0, +) / Double(scores.count)
+        selfLevelCache[id] = v
+        return v
+    }
+
     func maskStrength(for id: String) -> (cells: Int, avg: Double) {
         guard let m = mask(for: id) else { return (0, 0) }
         var n = 0

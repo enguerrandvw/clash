@@ -216,18 +216,14 @@ final class SoundAnalyzer: ObservableObject {
         harvestAmbience = []
         lastRaw = Array(raw.suffix(50))
 
-        // Recherche des motifs de référence dans la capture brute
-        if let hit = RefMatcher.best(in: raw) {
+        // Recherche des sons de référence dans la capture
+        if let hit = RefMatcher.best(in: treated) {
             let name = hit.card?.name
                 ?? hit.refCard.replacingOccurrences(of: "_", with: " ")
-            lastPlayInfo = "\(name) \(Int(hit.score * 100))%"
-                + (hit.runnerUp.isEmpty ? "" : " · puis \(hit.runnerUp)")
-        }
-
             lastTemplateHit = "\(name) \(Int(hit.score * 100))%"
-                + (hit.runnersUp.isEmpty ? "" : " · puis \(hit.runnersUp)")
+                + (hit.runnerUp.isEmpty ? "" : " · puis \(hit.runnerUp)")
         } else {
-            lastTemplateHit = "aucun motif"
+            lastTemplateHit = "aucune référence"
         }
         lastProcessed = treated
         guard treated.count >= 30 else {
@@ -245,6 +241,7 @@ final class SoundAnalyzer: ObservableObject {
         LearnedSounds.shared.observeMyPlay(drop: harvestDrop, frames: treated, audio: audio)
     }
 
+    @MainActor
     private func watchElixir(_ raw: Int) {
         guard raw >= 0 else { return }
 
@@ -291,6 +288,7 @@ final class SoundAnalyzer: ObservableObject {
     }
 
     /// Clôt une baisse en cours dès qu'elle ne progresse plus.
+    @MainActor
     private func closeDropIfSettled() {
         if let start = dropStart, Date().timeIntervalSince(start) > 0.5 {
             let drop = dropFrom - dropTo

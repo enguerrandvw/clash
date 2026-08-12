@@ -249,9 +249,15 @@ final class LearnedSounds: ObservableObject {
             smooth[i] = energy[lo...hi].reduce(0, +) / Double(hi - lo + 1)
         }
 
-        var peakIdx = 0, peakVal = -1.0
-        for (i, v) in smooth.enumerated() where v > peakVal {
-            peakVal = v; peakIdx = i
+        // On ne cherche l'événement que dans la zone où il peut se trouver :
+        // le son de la carte arrive environ une seconde après la baisse
+        // d'élixir, donc vers le milieu de la fenêtre. Chercher partout
+        // ferait s'accrocher l'algorithme à un tir de tour ou une explosion.
+        let lo = Int(Double(smooth.count) * 0.25)
+        let hi = Int(Double(smooth.count) * 0.80)
+        var peakIdx = lo, peakVal = -1.0
+        for i in lo..<max(lo + 1, hi) where smooth[i] > peakVal {
+            peakVal = smooth[i]; peakIdx = i
         }
         lastJump = peakVal
         guard peakVal > 0.5 else { return [] }
@@ -334,7 +340,7 @@ final class LearnedSounds: ObservableObject {
         // Les séquences sont déjà calées sur l'attaque détectée : un
         // glissement large laisserait un son long se superposer à
         // n'importe quoi et effacerait la différence de durée.
-        for shift in -12...12 {
+        for shift in -20...20 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)

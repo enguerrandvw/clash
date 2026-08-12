@@ -375,6 +375,14 @@ struct LearnView: View {
                                     .foregroundStyle(gap > 0.12 ? .green
                                                      : (gap > 0.05 ? .orange : .red))
                             }
+                            // Richesse du masque : combien de cases restent
+                            // une fois le décor écarté. En dessous d'une
+                            // centaine, la carte n'a presque rien de propre.
+                            let ms = learned.maskStrength(for: c.id)
+                            Text("\(ms.cells)")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(ms.cells > 250 ? .green
+                                                 : (ms.cells > 100 ? .orange : .red))
                             Text("+\(learned.freshCount(for: c.id))")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)

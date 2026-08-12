@@ -50,7 +50,7 @@ struct LearnView: View {
                         .foregroundStyle(.purple)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
-                    Text("\(SoundTemplates.all.count) motifs de référence")
+                    Text("\(SoundRefs.all.count) sons de référence")
                         .font(.caption2).foregroundStyle(.secondary)
 
                     Text(RefMatcher.isReady

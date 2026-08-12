@@ -560,6 +560,19 @@ final class LearnedSounds: ObservableObject {
     /// appartient donc au décor ; une case stable appartient à la carte.
     private var maskCache: [String: [[Double]]] = [:]
 
+    /// Nombre de cases exploitables du masque d'une carte, et poids moyen.
+    /// C'est la mesure directe de « combien de son propre reste-t-il une fois
+    /// le décor écarté ». Une carte pauvre ici ne pourra pas être reconnue.
+    func maskStrength(for id: String) -> (cells: Int, avg: Double) {
+        guard let m = mask(for: id) else { return (0, 0) }
+        var n = 0
+        var sum = 0.0
+        for row in m {
+            for v in row where v > 0.15 { n += 1; sum += v }
+        }
+        return (n, n > 0 ? sum / Double(n) : 0)
+    }
+
     func mask(for id: String) -> [[Double]]? {
         if let m = maskCache[id] { return m }
         guard let list = store[id], let m = maskOf(list) else { return nil }

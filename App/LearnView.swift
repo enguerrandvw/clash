@@ -35,7 +35,24 @@ struct LearnView: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 16) {
+                headerSection
+                deckSection
+                captureSection
+                Divider()
+                pendingSection
+                Divider()
+                summarySection
+            }
+            .padding(.vertical, 16)
+        }
+        .sheet(isPresented: $showShare) {
+            if let u = exportURL { ShareSheet(items: [u]) }
+        }
+    }
 
+    @ViewBuilder
+    private var headerSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 Text("Apprentissage des sons")
                     .font(.headline)
 
@@ -87,6 +104,12 @@ struct LearnView: View {
                         .multilineTextAlignment(.center)
                 }
 
+        }
+    }
+
+    @ViewBuilder
+    private var deckSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 // --- 1. Ton deck ---
                 VStack(alignment: .leading, spacing: 8) {
                     HStack {
@@ -153,6 +176,12 @@ struct LearnView: View {
                 }
                 .padding(.horizontal, 20)
 
+        }
+    }
+
+    @ViewBuilder
+    private var captureSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 // --- Inspection visuelle de la dernière capture ---
                 VStack(alignment: .leading, spacing: 5) {
                     Text("Dernière capture — brut")
@@ -201,6 +230,12 @@ struct LearnView: View {
 
                 Divider()
 
+        }
+    }
+
+    @ViewBuilder
+    private var pendingSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 // --- 2. Sons à étiqueter ---
                 VStack(alignment: .leading, spacing: 8) {
                     Text("À étiqueter — \(learned.pending.count)")
@@ -263,6 +298,50 @@ struct LearnView: View {
 
                 Divider()
 
+        }
+    }
+
+    @ViewBuilder
+    private var testReportView: some View {
+        if let r = testReport, r.total > 0 {
+                        VStack(spacing: 6) {
+                            Text("\(r.correct) bonnes réponses sur \(r.total)")
+                                .font(.headline)
+                                .foregroundStyle(r.rate > 0.4 ? .green
+                                                 : r.rate > 0.25 ? .orange : .red)
+                            Text("soit \(Int(r.rate * 100)) % — le hasard donnerait "
+                                 + "\(Int(100.0 / Double(max(1, r.perCard.count)))) %")
+                                .font(.caption).foregroundStyle(.secondary)
+
+                            ForEach(r.perCard.sorted { $0.value.ok > $1.value.ok },
+                                    id: \.key) { id, cell in
+                                let name = CardCatalog.all.first { $0.id == id }?.name ?? id
+                                let conf = r.confusedWith[id]?
+                                    .max { $0.value < $1.value }
+                                HStack {
+                                    Text(name).font(.caption)
+                                    Spacer()
+                                    if let c = conf, cell.ok < cell.n {
+                                        Text("↔ " + (CardCatalog.all.first {
+                                            $0.id == c.key }?.name ?? c.key))
+                                            .font(.caption2).foregroundStyle(.orange)
+                                    }
+                                    Text("\(cell.ok)/\(cell.n)")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(
+                                            cell.ok * 2 >= cell.n ? .green : .red)
+                                }
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.gray.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+    }
+
+    @ViewBuilder
+    private var summarySection: some View {
+        VStack(alignment: .leading, spacing: 8) {
                 // --- 3. Bilan ---
                 VStack(spacing: 6) {
                     Text("\(learned.cardCount) cartes apprises · \(learned.totalExamples) exemples")
@@ -310,40 +389,7 @@ struct LearnView: View {
                     }
                     .padding(.top, 12)
 
-                    if let r = testReport, r.total > 0 {
-                        VStack(spacing: 6) {
-                            Text("\(r.correct) bonnes réponses sur \(r.total)")
-                                .font(.headline)
-                                .foregroundStyle(r.rate > 0.4 ? .green
-                                                 : r.rate > 0.25 ? .orange : .red)
-                            Text("soit \(Int(r.rate * 100)) % — le hasard donnerait "
-                                 + "\(Int(100.0 / Double(max(1, r.perCard.count)))) %")
-                                .font(.caption).foregroundStyle(.secondary)
-
-                            ForEach(r.perCard.sorted { $0.value.ok > $1.value.ok },
-                                    id: \.key) { id, cell in
-                                let name = CardCatalog.all.first { $0.id == id }?.name ?? id
-                                let conf = r.confusedWith[id]?
-                                    .max { $0.value < $1.value }
-                                HStack {
-                                    Text(name).font(.caption)
-                                    Spacer()
-                                    if let c = conf, cell.ok < cell.n {
-                                        Text("↔ " + (CardCatalog.all.first {
-                                            $0.id == c.key }?.name ?? c.key))
-                                            .font(.caption2).foregroundStyle(.orange)
-                                    }
-                                    Text("\(cell.ok)/\(cell.n)")
-                                        .font(.caption.monospacedDigit())
-                                        .foregroundStyle(
-                                            cell.ok * 2 >= cell.n ? .green : .red)
-                                }
-                            }
-                        }
-                        .padding(10)
-                        .background(Color.gray.opacity(0.12))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
+                    testReportView
 
                     Button {
                         exportURL = writeExport()
@@ -368,13 +414,9 @@ struct LearnView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.bottom, 30)
-            }
-            .padding(.top, 16)
-        }
-        .sheet(isPresented: $showShare) {
-            if let u = exportURL { ShareSheet(items: [u]) }
         }
     }
+
 }
 
 /// Passerelle vers la feuille de partage d'iOS.

@@ -45,9 +45,11 @@ final class LearnedSounds: ObservableObject {
     /// Toutes les cartes ayant au moins un exemple, qu'elles soient ou non
     /// dans le deck déclaré. Sans ça, une banque chargée depuis le fichier
     /// compilé resterait invisible tant que le deck n'est pas redéclaré.
+    /// Toutes les cartes ayant au moins un exemple. On affiche tout : le
+    /// ralentissement venait des statistiques recalculées en boucle, pas du
+    /// nombre de lignes, et masquer des cartes rendait l'écran trompeur.
     var learnedCards: [Card] {
         store.keys
-            .filter { (store[$0]?.count ?? 0) > (bankedCount[$0] ?? 0) }
             .compactMap { id in CardCatalog.all.first { $0.id == id } }
             .sorted { $0.cost == $1.cost ? $0.name < $1.name : $0.cost < $1.cost }
     }
@@ -225,7 +227,10 @@ final class LearnedSounds: ObservableObject {
         let clipped = frames
         store[card.id, default: []].append(clipped)
         audioStore[card.id, default: []].append(audio)
-        if store[card.id]!.count > 8 {
+        // Plafond large : le masque de constance devient d'autant plus fiable
+        // qu'il dispose d'exemples variés. On ne jette que pour éviter une
+        // croissance sans fin.
+        if store[card.id]!.count > 40 {
             store[card.id]!.removeFirst()
             if !(audioStore[card.id]?.isEmpty ?? true) {
                 audioStore[card.id]!.removeFirst()

@@ -18,6 +18,23 @@ enum RefMatcher {
 
     static var isReady: Bool { !SoundRefs.all.isEmpty }
 
+    /// Empreinte d'une référence, pour l'afficher à côté d'une capture.
+    static func frames(for refCard: String) -> [[UInt8]]? {
+        SoundRefs.all.first { $0.card == refCard }?.frames
+    }
+
+    /// Résultats mis en cache : comparer une capture aux 190 références
+    /// est coûteux, et la vue se redessine souvent.
+    nonisolated(unsafe) private static var cache: [String: Hit] = [:]
+
+    static func cachedBest(key: String, capture: [[UInt8]]) -> Hit? {
+        if let c = cache[key] { return c }
+        guard let h = best(in: capture) else { return nil }
+        cache[key] = h
+        if cache.count > 200 { cache.removeAll() }
+        return h
+    }
+
     /// Correspondance dossier → carte du catalogue, calculée une fois.
     static let cardByRef: [String: Card] = {
         var map: [String: Card] = [:]

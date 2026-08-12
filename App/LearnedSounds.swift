@@ -590,6 +590,21 @@ final class LearnedSounds: ObservableObject {
         return v
     }
 
+    /// Proportion de cases non nulles dans les exemples d'une carte.
+    /// Si elle est très basse, le traitement a effacé le son au lieu de
+    /// l'isoler : c'est le seuil de 45 % du pic qui est en cause, et non
+    /// la carte elle-même.
+    func fillRate(for id: String) -> Double {
+        guard let list = store[id], !list.isEmpty else { return 0 }
+        var filled = 0, total = 0
+        for ex in list {
+            for row in ex {
+                for v in row { total += 1; if v > 0 { filled += 1 } }
+            }
+        }
+        return total > 0 ? Double(filled) / Double(total) : 0
+    }
+
     func maskStrength(for id: String) -> (cells: Int, avg: Double) {
         guard let m = mask(for: id) else { return (0, 0) }
         var n = 0

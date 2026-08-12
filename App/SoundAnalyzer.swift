@@ -142,8 +142,12 @@ final class SoundAnalyzer: ObservableObject {
             // à l'apprentissage et à la reconnaissance, donc pas d'écart possible.
             var name = "?"
             var pct = 0
+            // On analyse la même fenêtre large qu'à l'apprentissage : `capture`
+            // ne contient souvent qu'une trentaine de trames, sous le minimum
+            // exigé, et la reconnaissance échouait alors sans rien dire.
+            let window = Array(frames.suffix(160))
             let treated = LearnedSounds.process(
-                window: capture,
+                window: window,
                 ambience: Array(frames.suffix(60).prefix(20)))
             // La banque personnelle décide seule. Chercher en plus parmi les
             // 190 références du dépôt coûtait cher à chaque carte posée sans

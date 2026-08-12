@@ -433,8 +433,20 @@ final class LearnedSounds: ObservableObject {
             for (i, probe) in examples.enumerated() {
 
                 // Meilleur score de chaque carte, l'exemple testé exclu
+                // Les deux méthodes ne produisent pas des scores sur la même
+                // échelle : les mélanger d'une carte à l'autre fausserait la
+                // comparaison. On décide donc une fois pour toutes, selon que
+                // TOUTES les cartes disposent d'un masque exploitable.
+                let useMask = ids.allSatisfy { other in
+                    let pool = (other == id)
+                        ? (store[other] ?? []).enumerated()
+                            .filter { $0.offset != i }.map(\.element)
+                        : (store[other] ?? [])
+                    return maskOf(pool) != nil
+                }
+
                 var best = ""
-                var bestScore = -1.0
+                var bestScore = -2.0
                 for other in ids {
                     guard let list = store[other] else { continue }
                     // Pour la carte testée, on retire l'exemple examiné AVANT
@@ -445,8 +457,8 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    let sc: Double
-                    if let m = maskOf(pool), let ref = pool.first {
+                    var sc = -2.0
+                    if useMask, let m = maskOf(pool), let ref = pool.first {
                         sc = maskedScore(probe, against: ref, weights: m)
                     } else {
                         var scores = pool.map { correlation(probe, $0) }
@@ -480,11 +492,14 @@ final class LearnedSounds: ObservableObject {
         var best: (String, Double) = ("", -2)
         var second: (String, Double) = ("", -2)
 
+        // On n'emploie le masque que si toutes les cartes en ont un :
+        // les scores des deux méthodes ne sont pas comparables entre eux.
+        let useMask = store.keys.allSatisfy { mask(for: $0) != nil }
+
         for (id, examples) in store {
-            // Comparaison pondérée par le masque de constance dès que la
-            // carte a assez d'exemples pour qu'il soit fiable.
-            if mask(for: id) != nil {
+            if useMask {
                 let sc = maskedScore(probe, id: id)
+                guard sc > -1.5 else { continue }
                 if sc > best.1 {
                     second = best
                     best = (id, sc)
@@ -574,10 +589,20 @@ final class LearnedSounds: ObservableObject {
                 let varr = vals.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
                     / Double(vals.count)
                 // Écart-type rapporté à la moyenne : petit = constant.
+                // Écart-type rapporté à la moyenne. Les enregistrements en
+                // partie varient beaucoup : une case parfaitement stable
+                // n'existe presque jamais, donc on étale l'échelle au lieu
+                // de couper net.
                 let rel = varr.squareRoot() / max(mean, 1)
-                m[t][b] = max(0, 1 - rel)      // 1 = parfaitement stable
+                m[t][b] = max(0, 1 - rel / 1.6)
             }
         }
+
+        // Un masque presque vide ne permet aucune comparaison fiable :
+        // mieux vaut prévenir l'appelant et retomber sur la méthode simple.
+        var active = 0
+        for row in m { for v in row where v > 0.15 { active += 1 } }
+        guard active >= 40 else { return nil }
         return m
     }
 
@@ -607,7 +632,7 @@ final class LearnedSounds: ObservableObject {
             for i in 0..<n {
                 let ra = x[i], rb = y[i], wr = m[i]
                 let k = min(ra.count, rb.count, wr.count)
-                for j in 0..<k where wr[j] > 0.35 {
+                for j in 0..<k where wr[j] > 0.15 {
                     let g = wr[j]
                     let u = Double(ra[j]) * g, v = Double(rb[j]) * g
                     sx += u; sy += v; sxx += u * u; syy += v * v; sxy += u * v

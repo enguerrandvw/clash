@@ -9,6 +9,7 @@ struct LearnView: View {
     @State private var search = ""
     @State private var editingDeck = false
     @State private var exportURL: URL?
+    @State private var testReport: LearnedSounds.TestReport?
     @State private var showShare = false
 
     /// Écrit la banque dans un fichier temporaire, prêt à être partagé.
@@ -328,6 +329,52 @@ struct LearnView: View {
                         .padding(.horizontal, 12).padding(.vertical, 7)
                         .background(Color.gray.opacity(0.08))
                         .clipShape(RoundedRectangle(cornerRadius: 8))
+                    }
+
+                    Button {
+                        testReport = learned.selfTest()
+                    } label: {
+                        Label("Tester la reconnaissance", systemImage: "checkmark.seal")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(Color.green.opacity(0.18))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .padding(.top, 12)
+
+                    if let r = testReport, r.total > 0 {
+                        VStack(spacing: 6) {
+                            Text("\(r.correct) bonnes réponses sur \(r.total)")
+                                .font(.headline)
+                                .foregroundStyle(r.rate > 0.4 ? .green
+                                                 : r.rate > 0.25 ? .orange : .red)
+                            Text("soit \(Int(r.rate * 100)) % — le hasard donnerait "
+                                 + "\(Int(100.0 / Double(max(1, r.perCard.count)))) %")
+                                .font(.caption).foregroundStyle(.secondary)
+
+                            ForEach(r.perCard.sorted { $0.value.ok > $1.value.ok },
+                                    id: \.key) { id, cell in
+                                let name = CardCatalog.all.first { $0.id == id }?.name ?? id
+                                let conf = r.confusedWith[id]?
+                                    .max { $0.value < $1.value }
+                                HStack {
+                                    Text(name).font(.caption)
+                                    Spacer()
+                                    if let c = conf, cell.ok < cell.n {
+                                        Text("↔ " + (CardCatalog.all.first {
+                                            $0.id == c.key }?.name ?? c.key))
+                                            .font(.caption2).foregroundStyle(.orange)
+                                    }
+                                    Text("\(cell.ok)/\(cell.n)")
+                                        .font(.caption.monospacedDigit())
+                                        .foregroundStyle(
+                                            cell.ok * 2 >= cell.n ? .green : .red)
+                                }
+                            }
+                        }
+                        .padding(10)
+                        .background(Color.gray.opacity(0.12))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
                     Button {

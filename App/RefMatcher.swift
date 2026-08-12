@@ -27,6 +27,8 @@ enum RefMatcher {
     /// est coûteux, et la vue se redessine souvent.
     nonisolated(unsafe) private static var cache: [String: Hit] = [:]
 
+    static func clearCache() { cache.removeAll() }
+
     static func cachedBest(key: String, capture: [[UInt8]]) -> Hit? {
         if let c = cache[key] { return c }
         guard let h = best(in: capture) else { return nil }

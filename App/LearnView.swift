@@ -354,6 +354,16 @@ struct LearnView: View {
                     // d'exemples rendait l'écran inutilisable. On ne garde que
                     // l'essentiel ; les sons restent en mémoire et partent
                     // intégralement à l'export.
+                    if learned.myDeck.isEmpty {
+                        Text("Déclare ton deck ci-dessus : sans lui, l'app ne peut "
+                             + "pas savoir quelle carte associer à une baisse d'élixir, "
+                             + "et n'enregistre donc rien.")
+                            .font(.caption)
+                            .foregroundStyle(.orange)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 12)
+                    }
+
                     ForEach(learned.learnedCards) { c in
                         HStack(spacing: 8) {
                             Text(c.name).font(.caption.weight(.medium))

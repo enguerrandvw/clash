@@ -145,23 +145,18 @@ final class SoundAnalyzer: ObservableObject {
             let treated = LearnedSounds.process(
                 window: capture,
                 ambience: Array(frames.suffix(60).prefix(20)))
-            // On note toujours le meilleur score trouvé, même faible :
-            // sans ça, impossible de savoir si le seuil est mal réglé ou
-            // si la comparaison ne trouve rien du tout.
-            if let probe = RefMatcher.best(in: treated) {
-                lastTemplateHit = String(
-                    format: "réf : %@ %d%%%@",
-                    probe.card?.name ?? probe.refCard.replacingOccurrences(of: "_", with: " "),
-                    Int(probe.score * 100),
-                    probe.runnerUp.isEmpty ? "" : " · puis \(probe.runnerUp)")
-            } else {
-                lastTemplateHit = "réf : aucune correspondance calculable"
-            }
-
+            // La banque personnelle décide seule. Chercher en plus parmi les
+            // 190 références du dépôt coûtait cher à chaque carte posée sans
+            // jamais rien apporter d'utile.
             if let hit = learn.recognise(treated) {
                 pct = Int(hit.score * 100)
-                name = hit.score >= minScore ? hit.card.name : "?"
+                // On affiche toujours le nom trouvé, avec son score : c'est
+                // ce qui permet de juger en partie si la reconnaissance vaut
+                // quelque chose. Un doute est signalé par un point d'interrogation.
+                name = hit.card.name + (hit.score >= minScore ? "" : " ?")
                 p.extra = hit.runnerUp
+                lastTemplateHit = "\(hit.card.name) \(pct) %"
+                    + (hit.runnerUp.isEmpty ? "" : " · puis \(hit.runnerUp)")
             } else {
                 let sure = (r?.confidence ?? 0) >= minScore && !(r?.isBackground ?? true)
                 name = sure

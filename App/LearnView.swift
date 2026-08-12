@@ -378,6 +378,11 @@ struct LearnView: View {
                             // Richesse du masque : combien de cases restent
                             // une fois le décor écarté. En dessous d'une
                             // centaine, la carte n'a presque rien de propre.
+                            // Remplissage des exemples : si le son a été effacé
+                            // par le seuil, il ne reste presque rien à comparer.
+                            Text("\(Int(learned.fillRate(for: c.id) * 100))%")
+                                .font(.caption2.monospacedDigit())
+                                .foregroundStyle(.blue)
                             let ms = learned.maskStrength(for: c.id)
                             Text("\(ms.cells)")
                                 .font(.caption2.monospacedDigit())

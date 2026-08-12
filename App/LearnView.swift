@@ -63,9 +63,6 @@ struct LearnView: View {
                         .foregroundStyle(.purple)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
-                    Text("\(SoundTemplates.all.count) motifs de référence")
-                        .font(.caption2).foregroundStyle(.secondary)
-
                     Text(RefMatcher.isReady
                          ? "\(SoundRefs.all.count) sons de référence · \(RefMatcher.cardByRef.count) reliés à une carte"
                          : "Aucun son de référence chargé")

@@ -158,12 +158,7 @@ final class SoundAnalyzer: ObservableObject {
                 lastTemplateHit = "réf : aucune correspondance calculable"
             }
 
-            if let ref = RefMatcher.best(in: treated), ref.score > 0.35 {
-                pct = Int(ref.score * 100)
-                name = ref.card?.name
-                    ?? ref.refCard.replacingOccurrences(of: "_", with: " ")
-                p.extra = ref.runnerUp
-            } else if let hit = learn.recognise(treated) {
+            if let hit = learn.recognise(treated) {
                 pct = Int(hit.score * 100)
                 name = hit.score >= minScore ? hit.card.name : "?"
                 p.extra = hit.runnerUp

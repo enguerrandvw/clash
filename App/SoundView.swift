@@ -53,6 +53,12 @@ struct SoundView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 16)
 
+            Text("Tes cartes détectées : \(sound.myPlays) · dernière \(sound.lastPlayInfo)")
+                .font(.caption)
+                .foregroundStyle(sound.myPlays > 0 ? .green : .orange)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 16)
+
             Text(LearnedSounds.shared.isUsable
                  ? "Sons appris : \(LearnedSounds.shared.cardCount) cartes · \(LearnedSounds.shared.totalExamples) exemples — utilisés en priorité"
                  : "Sons appris : \(LearnedSounds.shared.cardCount) carte(s) — il en faut au moins 2")

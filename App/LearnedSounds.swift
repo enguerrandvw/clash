@@ -440,14 +440,6 @@ final class LearnedSounds: ObservableObject {
             for (i, probe) in examples.enumerated() {
 
                 // Meilleur score de chaque carte, l'exemple testé exclu
-                let useMask = ids.allSatisfy { other in
-                    let pool = (other == id)
-                        ? (store[other] ?? []).enumerated()
-                            .filter { $0.offset != i }.map(\.element)
-                        : (store[other] ?? [])
-                    return maskOf(pool) != nil
-                }
-
                 var best = ""
                 var bestScore = -2.0
                 for other in ids {
@@ -460,15 +452,10 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    var sc = -2.0
-                    if useMask, let r = maskOf(pool) {
-                        sc = maskedScore(probe, against: r.ref, weights: r.mask)
-                    } else {
-                        var scores = pool.map { correlation(probe, $0) }
-                        scores.sort(by: >)
-                        sc = scores.count >= 2
-                            ? (scores[0] + scores[1]) / 2 : scores[0]
-                    }
+                    var scores = pool.map { correlation(probe, $0) }
+                    scores.sort(by: >)
+                    let sc = scores.count >= 2
+                        ? (scores[0] + scores[1]) / 2 : scores[0]
                     if sc > bestScore { bestScore = sc; best = other }
                 }
                 guard !best.isEmpty else { continue }
@@ -495,27 +482,16 @@ final class LearnedSounds: ObservableObject {
         var best: (String, Double) = ("", -2)
         var second: (String, Double) = ("", -2)
 
-        // Score brut, sans normalisation. Rapporter chaque score au niveau
-        // interne de sa carte avantageait les cartes incohérentes : leur
-        // diviseur étant faible, elles remportaient tout. Essayé, mesuré,
-        // écarté — la précision était tombée de 57 % à 29 %.
+        // Comparaison directe aux exemples enregistrés.
         //
-        // Le masque n'est employé que si TOUTES les cartes en ont un, faute
-        // de quoi les échelles ne sont pas comparables.
-        let useMask = store.keys.allSatisfy { mask(for: $0) != nil }
-
+        // Le masque de constance — ne comparer que les cases stables d'une
+        // carte — a été essayé sous trois formes et mesuré à chaque fois :
+        // 29 %, puis 15 %, contre 52 % pour la méthode simple. L'idée était
+        // fondée, mais les enregistrements en partie varient trop pour qu'une
+        // zone vraiment stable s'en dégage. Le code est conservé (maskOf,
+        // maskedScore, maskStrength) car il reste utile pour diagnostiquer,
+        // mais il ne décide plus.
         for (id, examples) in store {
-            if useMask {
-                let sc = maskedScore(probe, id: id)
-                guard sc > -1.5 else { continue }
-                if sc > best.1 {
-                    second = best
-                    best = (id, sc)
-                } else if sc > second.1 {
-                    second = (id, sc)
-                }
-                continue
-            }
             // On écarte les exemples trop peu cohérents avec les autres :
             // ce sont des captures polluées par le bruit de combat, et
             // les garder dégraderait la reconnaissance.

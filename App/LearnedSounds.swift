@@ -214,77 +214,63 @@ final class LearnedSounds: ObservableObject {
     nonisolated(unsafe) static var lastJump = 0.0
 
     static func process(window: [[UInt8]], ambience: [[UInt8]]) -> [[UInt8]] {
-        guard let bands = window.first?.count, bands > 0, window.count >= 20
-        else { return window }
+        guard let bands = window.first?.count, bands > 0, window.count >= 40
+        else { return [] }
 
-        // Énergie de chaque tranche : on prend la BANDE LA PLUS FORTE.
-        // Un son de carte concentre son énergie sur quelques fréquences ;
-        // moyenné sur 32 bandes, un pic net devient imperceptible.
-        let energy: [Double] = window.map { f in
-            toDb(f.max() ?? 0)
-        }
-
-        // On cherche l'ÉVÉNEMENT : l'endroit où l'énergie bondit le plus
-        // au-dessus de ce qui la précède. Aucune zone n'est interdite —
-        // le son peut arriver tôt (sorts) ou tard (troupes lourdes).
-        var bestIdx = -1
-        var bestJump = -100.0
-        let look = 8
-        for i in look..<(window.count - 12) {
-            let base = energy[(i - look)..<i].reduce(0, +) / Double(look)
-            let jump = energy[i] - base
-            if jump > bestJump { bestJump = jump; bestIdx = i }
-        }
-
-        // Pas d'événement franc : on renvoie une fenêtre vide plutôt que
-        // du bruit, pour que l'enregistrement soit écarté.
-        lastJump = bestJump
-        // On ne rejette plus : dans un jeu qui sonne en permanence, un bond
-        // franc est rare. On retient le meilleur moment trouvé, et à défaut
-        // une position par défaut au milieu de la fenêtre.
-        if bestIdx < 0 || bestJump < jumpThreshold {
-            bestIdx = min(window.count - 1, max(0, window.count / 3))
-        }
-
-        // 60 tranches (≈ 0,70 s) : de quoi contenir en ENTIER les sons
-        // longs comme l'Arc-X ou La Bûche, dont la durée est justement
-        // ce qui les distingue des sons brefs.
-        let from = max(0, bestIdx - 4)
-        var tail = Array(window[from...])
-        if tail.count > 60 { tail = Array(tail.prefix(60)) }
-        guard tail.count >= 30 else { return [] }
-
-        // --- Retrait du fond stationnaire ---
-        // Pour chaque bande, on retire sa MÉDIANE temporelle sur la fenêtre.
-        // La musique et l'ambiance, constantes, s'annulent ; seuls les
-        // événements brefs — le son de la carte — subsistent.
-        let bandsN = tail.first?.count ?? 0
-        guard bandsN > 0 else { return [] }
-
-        var medians = [Double](repeating: 0, count: bandsN)
-        for b in 0..<bandsN {
-            var col = tail.compactMap { $0.count > b ? toDb($0[b]) : nil }
+        // --- 1. Retrait du fond stationnaire, sur TOUTE la fenêtre ---
+        // Pour chaque bande, on retire sa médiane temporelle. La musique et
+        // l'ambiance, constantes, s'annulent ; seuls les événements brefs
+        // subsistent. On le fait AVANT de découper, pour que l'événement
+        // soit déjà visible au moment de le localiser.
+        var medians = [Double](repeating: 0, count: bands)
+        for b in 0..<bands {
+            var col = window.compactMap { $0.count > b ? toDb($0[b]) : nil }
             guard !col.isEmpty else { continue }
             col.sort()
             medians[b] = col[col.count / 2]
         }
 
-        var rel: [[Double]] = []
-        for f in tail {
-            var row = [Double](repeating: 0, count: bandsN)
-            for b in 0..<bandsN where f.count > b {
+        var clean: [[Double]] = []
+        for f in window {
+            var row = [Double](repeating: 0, count: bands)
+            for b in 0..<bands where f.count > b {
                 row[b] = max(0, toDb(f[b]) - medians[b])
             }
-            rel.append(row)
+            clean.append(row)
         }
 
-        // Normalisation sur ce qui reste après retrait du fond
+        // --- 2. Localiser l'événement, maintenant qu'il est dégagé ---
+        // On lisse l'énergie résiduelle sur 5 trames pour ne pas s'accrocher
+        // à un pic isolé, puis on prend le maximum.
+        let energy = clean.map { $0.reduce(0, +) / Double(bands) }
+        var smooth = [Double](repeating: 0, count: energy.count)
+        for i in 0..<energy.count {
+            let lo = max(0, i - 2), hi = min(energy.count - 1, i + 2)
+            smooth[i] = energy[lo...hi].reduce(0, +) / Double(hi - lo + 1)
+        }
+
+        var peakIdx = 0, peakVal = -1.0
+        for (i, v) in smooth.enumerated() where v > peakVal {
+            peakVal = v; peakIdx = i
+        }
+        lastJump = peakVal
+        guard peakVal > 0.5 else { return [] }
+
+        // --- 3. Découper 60 trames centrées sur l'événement ---
+        let want = 60
+        var from = max(0, peakIdx - 12)
+        if from + want > clean.count { from = max(0, clean.count - want) }
+        var tail = Array(clean[from...])
+        if tail.count > want { tail = Array(tail.prefix(want)) }
+        guard tail.count >= 40 else { return [] }
+
+        // --- 4. Normaliser ---
         var peak = 0.0
-        for row in rel { for v in row { peak = max(peak, v) } }
+        for row in tail { for v in row { peak = max(peak, v) } }
         guard peak > 2 else { return [] }
 
         var out: [[UInt8]] = []
-        for row in rel {
+        for row in tail {
             out.append(row.map { v in
                 UInt8(max(0, min(255, Int(v / peak * 255))))
             })
@@ -348,7 +334,7 @@ final class LearnedSounds: ObservableObject {
         // Les séquences sont déjà calées sur l'attaque détectée : un
         // glissement large laisserait un son long se superposer à
         // n'importe quoi et effacerait la différence de durée.
-        for shift in -3...3 {
+        for shift in -12...12 {
             let x = shift >= 0 ? Array(a.dropFirst(shift)) : a
             let y = shift >= 0 ? b : Array(b.dropFirst(-shift))
             let n = min(x.count, y.count)

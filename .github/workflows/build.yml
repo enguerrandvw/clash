@@ -18,7 +18,6 @@ jobs:
       - name: Installer XcodeGen
         run: brew install xcodegen
 
-      # --- Sons de référence : tout se passe côté serveur ---
       - name: Cloner le dépôt de sons
         run: |
           git clone --depth 1 \
@@ -27,11 +26,6 @@ jobs:
 
       - name: Installer numpy
         run: pip3 install --quiet --break-system-packages numpy || pip3 install --quiet numpy
-
-      - name: Générer les motifs de référence
-        run: |
-          python3 Tools/make_templates.py /tmp/sfx App/SoundTemplates.swift
-          grep -c "SoundTemplate(card:" App/SoundTemplates.swift
 
       - name: Calculer les empreintes de référence
         run: |

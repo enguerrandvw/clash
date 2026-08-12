@@ -145,6 +145,19 @@ final class SoundAnalyzer: ObservableObject {
             let treated = LearnedSounds.process(
                 window: capture,
                 ambience: Array(frames.suffix(60).prefix(20)))
+            // On note toujours le meilleur score trouvé, même faible :
+            // sans ça, impossible de savoir si le seuil est mal réglé ou
+            // si la comparaison ne trouve rien du tout.
+            if let probe = RefMatcher.best(in: treated) {
+                lastTemplateHit = String(
+                    format: "réf : %@ %d%%%@",
+                    probe.card?.name ?? probe.refCard.replacingOccurrences(of: "_", with: " "),
+                    Int(probe.score * 100),
+                    probe.runnerUp.isEmpty ? "" : " · puis \(probe.runnerUp)")
+            } else {
+                lastTemplateHit = "réf : aucune correspondance calculable"
+            }
+
             if let ref = RefMatcher.best(in: treated), ref.score > 0.35 {
                 pct = Int(ref.score * 100)
                 name = ref.card?.name

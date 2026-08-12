@@ -8,6 +8,19 @@ struct LearnView: View {
     @ObservedObject private var capture = CaptureBridge.shared
     @State private var search = ""
     @State private var editingDeck = false
+    @State private var exportURL: URL?
+    @State private var showShare = false
+
+    /// Écrit la banque dans un fichier temporaire, prêt à être partagé.
+    private func writeExport() -> URL? {
+        let text = learned.exportSwift()
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BankedSounds.swift")
+        do {
+            try text.write(to: url, atomically: true, encoding: .utf8)
+            return url
+        } catch { return nil }
+    }
 
     private var results: [Card] {
         let q = CardCatalog.normalize(search)
@@ -50,7 +63,7 @@ struct LearnView: View {
                         .foregroundStyle(.purple)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 12)
-                    Text("\(SoundRefs.all.count) sons de référence")
+                    Text("\(SoundTemplates.all.count) motifs de référence")
                         .font(.caption2).foregroundStyle(.secondary)
 
                     Text(RefMatcher.isReady
@@ -102,7 +115,7 @@ struct LearnView: View {
                                 Spacer()
                                 Text("\(c.cost)").font(.caption.bold())
                                     .foregroundStyle(.purple)
-                                Text("· \(learned.count(for: c.id))")
+                                Text("· \(learned.usableCount(for: c.id))/\(learned.count(for: c.id))")
                                     .font(.caption2)
                                     .foregroundStyle(learned.count(for: c.id) >= 3
                                                      ? .green : .orange)
@@ -320,6 +333,24 @@ struct LearnView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
+                    Button {
+                        exportURL = writeExport()
+                        showShare = exportURL != nil
+                    } label: {
+                        Label("Exporter la banque (\(learned.totalExamples) exemples)",
+                              systemImage: "square.and.arrow.up")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(Color.blue.opacity(0.18))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .padding(.top, 8)
+
+                    Text("Dépose le fichier dans App/BankedSounds.swift sur GitHub : "
+                         + "tes exemples seront compilés dans l'app et ne se perdront plus.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+
                     Button("Tout oublier", role: .destructive) { learned.forgetAll() }
                         .font(.footnote).padding(.top, 6)
                 }
@@ -328,5 +359,17 @@ struct LearnView: View {
             }
             .padding(.top, 16)
         }
+        .sheet(isPresented: $showShare) {
+            if let u = exportURL { ShareSheet(items: [u]) }
+        }
     }
+}
+
+/// Passerelle vers la feuille de partage d'iOS.
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
 }

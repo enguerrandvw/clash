@@ -365,7 +365,7 @@ struct LearnView: View {
                                     .foregroundStyle(gap > 0.12 ? .green
                                                      : (gap > 0.05 ? .orange : .red))
                             }
-                            Text("\(learned.usableCount(for: c.id))/\(learned.count(for: c.id))")
+                            Text("+\(learned.freshCount(for: c.id))")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.secondary)
                             Button { learned.forget(c.id) } label: {
@@ -395,7 +395,7 @@ struct LearnView: View {
                         exportURL = writeExport()
                         showShare = exportURL != nil
                     } label: {
-                        Label("Exporter la banque (\(learned.totalExamples) exemples)",
+                        Label("Exporter tout (\(learned.totalExamples) dont \(learned.freshExamples) nouveaux)",
                               systemImage: "square.and.arrow.up")
                             .font(.subheadline.weight(.medium))
                             .frame(maxWidth: .infinity, minHeight: 44)

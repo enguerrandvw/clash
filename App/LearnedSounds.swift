@@ -17,12 +17,47 @@ final class LearnedSounds: ObservableObject {
     /// Ton deck : 8 cartes déclarées une fois pour toutes.
     @Published var myDeck: [Card] = []
 
+    /// Nombre d'exemples déjà figés dans l'app par carte. Sert à n'afficher
+    /// que les nouveautés : les anciens restent en mémoire et à l'export.
+    private var bankedCount: [String: Int] = [:]
+
+    /// Statistiques mises en cache. Les recalculer à chaque redessin de
+    /// l'écran coûtait des milliers de corrélations et figeait l'interface.
+    private var statsCache: [String: (own: Double, other: Double,
+                                      with: String, usable: Int)] = [:]
+
+    private func invalidateStats() {
+        statsCache.removeAll()
+        RefMatcher.clearCache()
+    }
+
+    private func stats(_ id: String)
+        -> (own: Double, other: Double, with: String, usable: Int)? {
+        if let c = statsCache[id] { return c }
+        guard let sep = computeSeparation(for: id) else { return nil }
+        let usable = computeUsableCount(for: id)
+        let v = (sep.own, sep.other, sep.with, usable)
+        statsCache[id] = v
+        return v
+    }
+
     /// Toutes les cartes ayant au moins un exemple, qu'elles soient ou non
     /// dans le deck déclaré. Sans ça, une banque chargée depuis le fichier
     /// compilé resterait invisible tant que le deck n'est pas redéclaré.
     var learnedCards: [Card] {
-        store.keys.compactMap { id in CardCatalog.all.first { $0.id == id } }
+        store.keys
+            .filter { (store[$0]?.count ?? 0) > (bankedCount[$0] ?? 0) }
+            .compactMap { id in CardCatalog.all.first { $0.id == id } }
             .sorted { $0.cost == $1.cost ? $0.name < $1.name : $0.cost < $1.cost }
+    }
+
+    /// Exemples ajoutés depuis le dernier export, toutes cartes confondues.
+    var freshExamples: Int {
+        store.reduce(0) { $0 + max(0, $1.value.count - (bankedCount[$1.key] ?? 0)) }
+    }
+
+    func freshCount(for id: String) -> Int {
+        max(0, (store[id]?.count ?? 0) - (bankedCount[id] ?? 0))
     }
 
     /// Sons captés dont on ignore encore la carte, en attente d'étiquetage.
@@ -68,7 +103,10 @@ final class LearnedSounds: ObservableObject {
                 }
                 if frames.count >= 30 { examples.append(frames) }
             }
-            if !examples.isEmpty { store[id] = examples }
+            if !examples.isEmpty {
+                store[id] = examples
+                bankedCount[id] = examples.count
+            }
         }
     }
 
@@ -153,7 +191,14 @@ final class LearnedSounds: ObservableObject {
     func count(for id: String) -> Int { store[id]?.count ?? 0 }
 
     /// Exemples jugés assez cohérents pour servir à la reconnaissance.
-    func usableCount(for id: String) -> Int {
+    func usableCount(for id: String) -> Int { stats(id)?.usable ?? 0 }
+
+    func separation(for id: String) -> (own: Double, other: Double, with: String)? {
+        guard let s = stats(id) else { return nil }
+        return (s.own, s.other, s.with)
+    }
+
+    private func computeUsableCount(for id: String) -> Int {
         guard let list = store[id] else { return 0 }
         if list.count < 3 { return list.count }
         return (0..<list.count).filter { (consistency(id, at: $0) ?? 1) >= 0.60 }.count
@@ -171,6 +216,7 @@ final class LearnedSounds: ObservableObject {
     }
 
     func add(_ frames: [[UInt8]], for card: Card, audio: [UInt8] = []) {
+        invalidateStats()
         guard frames.count >= 30 else {
             lastMessage = "Trop court, ignoré"
             return
@@ -192,7 +238,7 @@ final class LearnedSounds: ObservableObject {
     /// Mesure décisive : une carte est reconnaissable si ses exemples se
     /// ressemblent PLUS entre eux qu'ils ne ressemblent aux autres cartes.
     /// Retourne la ressemblance interne, la confusion maximale, et avec qui.
-    func separation(for id: String) -> (own: Double, other: Double, with: String)? {
+    private func computeSeparation(for id: String) -> (own: Double, other: Double, with: String)? {
         guard let mine = store[id], mine.count >= 2 else { return nil }
 
         var own = 0.0, n = 0.0
@@ -222,6 +268,7 @@ final class LearnedSounds: ObservableObject {
 
     /// Supprime un exemple précis d'une carte.
     func remove(_ id: String, at index: Int) {
+        invalidateStats()
         guard var list = store[id], index < list.count else { return }
         list.remove(at: index)
         if list.isEmpty { store.removeValue(forKey: id) } else { store[id] = list }
@@ -246,12 +293,14 @@ final class LearnedSounds: ObservableObject {
     }
 
     func forget(_ id: String) {
+        invalidateStats()
         store.removeValue(forKey: id)
         audioStore.removeValue(forKey: id)
         save()
     }
 
     func forgetAll() {
+        invalidateStats()
         store.removeAll()
         audioStore.removeAll()
         save()

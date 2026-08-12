@@ -28,6 +28,7 @@ final class LearnedSounds: ObservableObject {
 
     private func invalidateStats() {
         statsCache.removeAll()
+        maskCache.removeAll()
         RefMatcher.clearCache()
     }
 
@@ -436,15 +437,23 @@ final class LearnedSounds: ObservableObject {
                 var bestScore = -1.0
                 for other in ids {
                     guard let list = store[other] else { continue }
-                    var scores: [Double] = []
-                    for (j, ex) in list.enumerated() {
-                        if other == id && j == i { continue }   // on se cache
-                        scores.append(correlation(probe, ex))
+                    // Pour la carte testée, on retire l'exemple examiné AVANT
+                    // de calculer son masque : sinon il se reconnaîtrait
+                    // lui-même et le score serait flatté.
+                    let pool = (other == id)
+                        ? list.enumerated().filter { $0.offset != i }.map(\.element)
+                        : list
+                    guard !pool.isEmpty else { continue }
+
+                    let sc: Double
+                    if let m = maskOf(pool), let ref = pool.first {
+                        sc = maskedScore(probe, against: ref, weights: m)
+                    } else {
+                        var scores = pool.map { correlation(probe, $0) }
+                        scores.sort(by: >)
+                        sc = scores.count >= 2
+                            ? (scores[0] + scores[1]) / 2 : scores[0]
                     }
-                    guard !scores.isEmpty else { continue }
-                    scores.sort(by: >)
-                    let sc = scores.count >= 2
-                        ? (scores[0] + scores[1]) / 2 : scores[0]
                     if sc > bestScore { bestScore = sc; best = other }
                 }
                 guard !best.isEmpty else { continue }
@@ -472,6 +481,18 @@ final class LearnedSounds: ObservableObject {
         var second: (String, Double) = ("", -2)
 
         for (id, examples) in store {
+            // Comparaison pondérée par le masque de constance dès que la
+            // carte a assez d'exemples pour qu'il soit fiable.
+            if mask(for: id) != nil {
+                let sc = maskedScore(probe, id: id)
+                if sc > best.1 {
+                    second = best
+                    best = (id, sc)
+                } else if sc > second.1 {
+                    second = (id, sc)
+                }
+                continue
+            }
             // On écarte les exemples trop peu cohérents avec les autres :
             // ce sont des captures polluées par le bruit de combat, et
             // les garder dégraderait la reconnaissance.
@@ -514,6 +535,93 @@ final class LearnedSounds: ObservableObject {
     /// temporel toléré dans les deux sens.
     /// Corrélation sur la séquence chronologique COMPLÈTE : c'est
     /// l'évolution des bandes dans le temps qui identifie une carte.
+    /// Masque de constance d'une carte : les cases du spectrogramme qui
+    /// gardent la même valeur d'un enregistrement à l'autre.
+    ///
+    /// L'idée est celle-ci : sur dix enregistrements du Chevalier, le
+    /// voisinage change à chaque fois — une sorcière ici, une boule de feu
+    /// là. Seul le son du Chevalier est présent dans les dix, toujours au
+    /// même endroit et à la même intensité. Une case qui varie beaucoup
+    /// appartient donc au décor ; une case stable appartient à la carte.
+    private var maskCache: [String: [[Double]]] = [:]
+
+    func mask(for id: String) -> [[Double]]? {
+        if let m = maskCache[id] { return m }
+        guard let list = store[id], let m = maskOf(list) else { return nil }
+        maskCache[id] = m
+        return m
+    }
+
+    /// Même calcul, sur un ensemble d'exemples quelconque.
+    func maskOf(_ examples: [[[UInt8]]]) -> [[Double]]? {
+        guard examples.count >= 3,
+              let bands = examples.first?.first?.count else { return nil }
+        let frames = examples.map(\.count).min() ?? 0
+        guard frames >= 20 else { return nil }
+
+        var m = [[Double]](repeating: [Double](repeating: 0, count: bands),
+                           count: frames)
+        for t in 0..<frames {
+            for b in 0..<bands {
+                var vals: [Double] = []
+                for ex in examples where ex[t].count > b {
+                    vals.append(Double(ex[t][b]))
+                }
+                guard vals.count >= 3 else { continue }
+                let mean = vals.reduce(0, +) / Double(vals.count)
+                // Une case vide n'apprend rien, même si elle est stable.
+                guard mean > 12 else { continue }
+                let varr = vals.reduce(0) { $0 + ($1 - mean) * ($1 - mean) }
+                    / Double(vals.count)
+                // Écart-type rapporté à la moyenne : petit = constant.
+                let rel = varr.squareRoot() / max(mean, 1)
+                m[t][b] = max(0, 1 - rel)      // 1 = parfaitement stable
+            }
+        }
+        return m
+    }
+
+    /// Comparaison pondérée : seules les cases constantes de la carte pèsent.
+    func maskedScore(_ probe: [[UInt8]], id: String) -> Double {
+        guard let m = mask(for: id), let ref = store[id]?.first else {
+            return store[id].map { list in
+                list.map { correlation(probe, $0) }.max() ?? -1
+            } ?? -1
+        }
+        return maskedScore(probe, against: ref, weights: m)
+    }
+
+    /// Cœur du calcul : corrélation où chaque case est pondérée par sa
+    /// constance. Une case qui varie d'un enregistrement à l'autre ne
+    /// compte presque pas ; une case toujours identique compte pleinement.
+    func maskedScore(_ probe: [[UInt8]], against ref: [[UInt8]],
+                     weights m: [[Double]]) -> Double {
+        var best = -2.0
+        for shift in -20...20 {
+            let x = shift >= 0 ? Array(probe.dropFirst(shift)) : probe
+            let y = shift >= 0 ? ref : Array(ref.dropFirst(-shift))
+            let n = min(x.count, y.count, m.count)
+            guard n >= 20 else { continue }
+
+            var sx = 0.0, sy = 0.0, sxx = 0.0, syy = 0.0, sxy = 0.0, w = 0.0
+            for i in 0..<n {
+                let ra = x[i], rb = y[i], wr = m[i]
+                let k = min(ra.count, rb.count, wr.count)
+                for j in 0..<k where wr[j] > 0.35 {
+                    let g = wr[j]
+                    let u = Double(ra[j]) * g, v = Double(rb[j]) * g
+                    sx += u; sy += v; sxx += u * u; syy += v * v; sxy += u * v
+                    w += g
+                }
+            }
+            guard w > 12 else { continue }
+            let num = sxy - sx * sy / w
+            let den = ((sxx - sx * sx / w) * (syy - sy * sy / w)).squareRoot()
+            if den > 1e-6 { best = max(best, num / den) }
+        }
+        return best
+    }
+
     func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         var best = -2.0
         // La baisse d'élixir est détectée avec un retard variable : le son

@@ -29,6 +29,7 @@ final class LearnedSounds: ObservableObject {
     private func invalidateStats() {
         statsCache.removeAll()
         maskCache.removeAll()
+        maskRefCache.removeAll()
         selfLevelCache.removeAll()
         RefMatcher.clearCache()
     }
@@ -460,8 +461,8 @@ final class LearnedSounds: ObservableObject {
                     guard !pool.isEmpty else { continue }
 
                     var sc = -2.0
-                    if useMask, let m = maskOf(pool), let ref = pool.first {
-                        sc = maskedScore(probe, against: ref, weights: m)
+                    if useMask, let r = maskOf(pool) {
+                        sc = maskedScore(probe, against: r.ref, weights: r.mask)
                     } else {
                         var scores = pool.map { correlation(probe, $0) }
                         scores.sort(by: >)
@@ -615,11 +616,14 @@ final class LearnedSounds: ObservableObject {
         return (n, n > 0 ? sum / Double(n) : 0)
     }
 
+    private var maskRefCache: [String: [[UInt8]]] = [:]
+
     func mask(for id: String) -> [[Double]]? {
         if let m = maskCache[id] { return m }
-        guard let list = store[id], let m = maskOf(list) else { return nil }
-        maskCache[id] = m
-        return m
+        guard let list = store[id], let r = maskOf(list) else { return nil }
+        maskCache[id] = r.mask
+        maskRefCache[id] = r.ref
+        return r.mask
     }
 
     /// Recale un exemple sur une référence, puis renvoie la version alignée.
@@ -666,7 +670,7 @@ final class LearnedSounds: ObservableObject {
     }
 
     /// Même calcul, sur un ensemble d'exemples quelconque.
-    func maskOf(_ examples: [[[UInt8]]]) -> [[Double]]? {
+    func maskOf(_ examples: [[[UInt8]]]) -> (mask: [[Double]], ref: [[UInt8]])? {
         guard examples.count >= 3,
               let bands = examples.first?.first?.count else { return nil }
 
@@ -694,7 +698,9 @@ final class LearnedSounds: ObservableObject {
             (i, i == refIdx ? 1.0 : correlation(examples[i], ref))
         }
         scored.sort { $0.score > $1.score }
-        let keep = max(3, Int((Double(examples.count) * 0.6).rounded()))
+        // On écarte le quart le moins représentatif : assez pour retirer les
+        // enregistrements manqués, pas au point de priver le masque de matière.
+        let keep = max(3, Int((Double(examples.count) * 0.75).rounded()))
         let coreIdx = scored.prefix(keep).map(\.idx)
 
         // 3. Recaler le noyau sur la référence
@@ -737,12 +743,15 @@ final class LearnedSounds: ObservableObject {
         var active = 0
         for row in m { for v in row where v > 0.15 { active += 1 } }
         guard active >= 40 else { return nil }
-        return m
+        // Le masque et l'exemple autour duquel il a été construit vont de
+        // pair : comparer avec un autre exemple pondérerait des cases qui
+        // ne lui correspondent pas.
+        return (m, ref)
     }
 
     /// Comparaison pondérée : seules les cases constantes de la carte pèsent.
     func maskedScore(_ probe: [[UInt8]], id: String) -> Double {
-        guard let m = mask(for: id), let ref = store[id]?.first else {
+        guard let m = mask(for: id), let ref = maskRefCache[id] else {
             return store[id].map { list in
                 list.map { correlation(probe, $0) }.max() ?? -1
             } ?? -1

@@ -29,6 +29,7 @@ final class LearnedSounds: ObservableObject {
     private func invalidateStats() {
         statsCache.removeAll()
         maskCache.removeAll()
+        perCardMethod.removeAll()
         maskRefCache.removeAll()
         selfLevelCache.removeAll()
         RefMatcher.clearCache()
@@ -452,7 +453,7 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    var scores = pool.map { similarity(probe, $0) }
+                    var scores = pool.map { similarity(probe, $0, for: other) }
                     scores.sort(by: >)
                     let sc = scores.count >= 2
                         ? (scores[0] + scores[1]) / 2 : scores[0]
@@ -506,7 +507,7 @@ final class LearnedSounds: ObservableObject {
             // Moyenne des deux meilleures correspondances : plus stable
             // qu'un simple record, qui favorise les cartes ayant le plus
             // d'exemples enregistrés.
-            var scores = usable.map { similarity(probe, $0) }
+            var scores = usable.map { similarity(probe, $0, for: id) }
             scores.sort(by: >)
             let take = min(2, scores.count)
             let bestForCard = scores.prefix(take).reduce(0, +) / Double(take)
@@ -773,10 +774,61 @@ final class LearnedSounds: ObservableObject {
         case blurred     = "Corrélation floutée"
         case descriptors = "Descripteurs"
         case combined    = "Combiné"
+        case perCard     = "Auto"
         var id: String { rawValue }
     }
 
     nonisolated(unsafe) static var method: Method = .simple
+
+    /// Méthode retenue carte par carte.
+    ///
+    /// Les sons brefs — squelettes, archères — gagnent au floutage, qui
+    /// épaissit leur motif et lui permet de se superposer malgré un léger
+    /// décalage. Les sons longs y perdent, le flou noyant leur structure.
+    /// Corrélation simple et corrélation floutée produisent toutes deux des
+    /// coefficients de Pearson, donc sur la même échelle : on peut choisir
+    /// l'une ou l'autre selon la carte sans fausser la comparaison.
+    private var perCardMethod: [String: Method] = [:]
+
+    func methodFor(_ id: String) -> Method {
+        if LearnedSounds.method != .perCard { return LearnedSounds.method }
+        if let m = perCardMethod[id] { return m }
+
+        // On mesure, pour cette carte seule, laquelle des deux retrouve le
+        // mieux ses propres exemples parmi toutes les cartes.
+        var bestM = Method.simple
+        var bestHits = -1
+        for cand in [Method.simple, .blurred] {
+            var hits = 0
+            guard let list = store[id] else { continue }
+            for (i, probe) in list.enumerated() {
+                var top = ""
+                var topScore = -2.0
+                for (other, exs) in store {
+                    for (j, ex) in exs.enumerated() {
+                        if other == id && j == i { continue }
+                        let v = cand == .simple
+                            ? correlation(probe, ex)
+                            : correlation(blur(probe), blur(ex))
+                        if v > topScore { topScore = v; top = other }
+                    }
+                }
+                if top == id { hits += 1 }
+            }
+            if hits > bestHits { bestHits = hits; bestM = cand }
+        }
+        perCardMethod[id] = bestM
+        return bestM
+    }
+
+    func methodLabel(for id: String) -> String {
+        switch methodFor(id) {
+        case .blurred: return "flou"
+        case .descriptors: return "desc"
+        case .combined: return "mixte"
+        default: return "corr"
+        }
+    }
 
     /// Flou léger : chaque case déborde sur ses voisines, si bien qu'un motif
     /// décalé d'une case continue de se superposer. Vise le décalage local en
@@ -877,8 +929,9 @@ final class LearnedSounds: ObservableObject {
 
     /// Score selon la méthode retenue, toujours ramené sur l'échelle de la
     /// corrélation pour rester comparable d'une carte à l'autre.
-    func similarity(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
-        switch LearnedSounds.method {
+    func similarity(_ a: [[UInt8]], _ b: [[UInt8]], for id: String? = nil) -> Double {
+        let m = id.map { methodFor($0) } ?? LearnedSounds.method
+        switch m == .perCard ? .simple : m {
         case .simple:
             return correlation(a, b)
         case .blurred:

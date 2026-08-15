@@ -463,11 +463,12 @@ final class LearnedSounds: ObservableObject {
                 var best = ""
                 var bestScore = -2.0
                 for (other, exs) in learn {
-                    let m = chosen[other] ?? .simple
-                    var scores = exs.map { ex -> Double in
-                        m == .blurred ? correlation(blur(probe), blur(ex))
-                                      : correlation(probe, ex)
-                    }
+                    // En mode Auto, la méthode dépend de la carte ; sinon
+                    // c'est celle sélectionnée qui s'applique partout.
+                    let m = LearnedSounds.method == .perCard
+                        ? (chosen[other] ?? .simple)
+                        : LearnedSounds.method
+                    var scores = exs.map { similarity(probe, $0, using: m) }
                     scores.sort(by: >)
                     let sc = scores.count >= 2
                         ? (scores[0] + scores[1]) / 2 : (scores.first ?? -2)
@@ -507,7 +508,9 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    var scores = pool.map { similarity(probe, $0, for: other) }
+                    let m = LearnedSounds.method == .perCard
+                        ? methodFor(other) : LearnedSounds.method
+                    var scores = pool.map { similarity(probe, $0, using: m) }
                     scores.sort(by: >)
                     let sc = scores.count >= 2
                         ? (scores[0] + scores[1]) / 2 : scores[0]
@@ -857,7 +860,10 @@ final class LearnedSounds: ObservableObject {
 
         var bestM = Method.simple
         var bestHits = -1
-        for cand in [Method.simple, .blurred] {
+        // Les quatre méthodes sont mises en concurrence, pas seulement
+        // corrélation et flou : les descripteurs pourraient convenir à une
+        // carte que les deux autres ratent.
+        for cand in [Method.simple, .blurred, .descriptors, .combined] {
             var hits = 0
             guard let list = source[id] else { continue }
             for (i, probe) in list.enumerated() {
@@ -866,9 +872,7 @@ final class LearnedSounds: ObservableObject {
                 for (other, exs) in source {
                     for (j, ex) in exs.enumerated() {
                         if other == id && j == i { continue }
-                        let v = cand == .simple
-                            ? correlation(probe, ex)
-                            : correlation(blur(probe), blur(ex))
+                        let v = similarity(probe, ex, using: cand)
                         if v > topScore { topScore = v; top = other }
                     }
                 }
@@ -989,6 +993,25 @@ final class LearnedSounds: ObservableObject {
 
     /// Score selon la méthode retenue, toujours ramené sur l'échelle de la
     /// corrélation pour rester comparable d'une carte à l'autre.
+    /// Applique une méthode explicitement désignée. Sans elle, le test
+    /// sans biais retombait sur la corrélation quelle que soit la méthode
+    /// choisie, et les quatre modes rendaient le même chiffre.
+    func similarity(_ a: [[UInt8]], _ b: [[UInt8]], using m: Method) -> Double {
+        switch m {
+        case .simple, .perCard:
+            return correlation(a, b)
+        case .blurred:
+            return correlation(blur(a), blur(b))
+        case .descriptors:
+            let dist = descriptors(a).distance(to: descriptors(b))
+            return 1 - min(1, dist)
+        case .combined:
+            let c = correlation(a, b)
+            let dist = descriptors(a).distance(to: descriptors(b))
+            return 0.6 * c + 0.4 * (1 - min(1, dist))
+        }
+    }
+
     func similarity(_ a: [[UInt8]], _ b: [[UInt8]], for id: String? = nil) -> Double {
         let m = id.map { methodFor($0) } ?? LearnedSounds.method
         switch m {

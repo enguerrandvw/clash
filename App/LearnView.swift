@@ -341,10 +341,6 @@ struct LearnView: View {
                     }
     }
 
-    /// Liste des cartes apprises, chaque ligne dépliable pour écouter ses
-    /// exemples. Vue séparée : au-delà d'une certaine taille d'expression,
-    /// le compilateur SwiftUI renonce à déduire les types.
-    @ViewBuilder
     /// Liste des cartes apprises. Toucher une ligne déplie ses exemples,
     /// avec écoute et spectrogramme : c'est le seul moyen de vérifier que
     /// la capture contient bien le son de la carte et non celui d'à côté.

@@ -286,10 +286,19 @@ final class SoundAnalyzer: ObservableObject {
                 // environ une seconde plus tard.
                 dropAmbience = Array(frames.suffix(24).prefix(20))
                 dropWindow = []
+                dropTo = now
             }
-            dropTo = now
+            // On retient le point le plus bas atteint, jamais la dernière
+            // valeur lue : l'élixir remonte pendant qu'on attend la
+            // stabilisation — un point toutes les 0,9 s en ×3 — et une
+            // carte à 3 finissait mesurée à 2.
+            dropTo = min(dropTo, now)
             return
         }
+
+        // Même hors baisse, un creux passager doit être pris en compte :
+        // la remontée peut avoir lieu avant la lecture suivante.
+        if dropStart != nil { dropTo = min(dropTo, now) }
 
         closeDropIfSettled()
     }
@@ -297,7 +306,9 @@ final class SoundAnalyzer: ObservableObject {
     /// Clôt une baisse en cours dès qu'elle ne progresse plus.
     @MainActor
     private func closeDropIfSettled() {
-        if let start = dropStart, Date().timeIntervalSince(start) > 0.5 {
+        // Attente réduite : maintenant que le creux est mémorisé, il n'y a
+        // plus de raison de laisser l'élixir remonter avant de conclure.
+        if let start = dropStart, Date().timeIntervalSince(start) > 0.35 {
             let drop = dropFrom - dropTo
             dropStart = nil
             // Une carte coûte au plus 9 : au-delà, c'est une erreur de lecture
@@ -314,7 +325,7 @@ final class SoundAnalyzer: ObservableObject {
             myPlays += 1
             lastMyPlayAt = Date()
             lastMyPlayDrop = drop
-            lastPlayInfo = "−\(drop) élixir (\(dropFrom)→\(dropTo)) · écoute…"
+            lastPlayInfo = "−\(drop) élixir · \(dropFrom) → \(dropTo) (creux) · écoute…"
 
             // C'est la BAISSE elle-même qui déclenche l'affichage.
             // Plus besoin qu'un son ait été détecté au bon moment.

@@ -78,7 +78,8 @@ final class LearnedSounds: ObservableObject {
     @Published var pending: [Pending] = []
 
     @Published var lastMessage = ""
-    @Published var autoLearned = 0      // appris sans intervention
+    @Published var autoLearned = 0      // conservé pour compatibilité
+    @Published var labelled = 0         // exemples étiquetés à la main
     @Published var sentToPending = 0    // coût partagé, à étiqueter
     @Published var noCandidate = 0      // coût absent du deck
     /// Conservé pour l'ancien mode manuel
@@ -160,28 +161,32 @@ final class LearnedSounds: ObservableObject {
     /// Appelé quand TON élixir a baissé : on déduit la carte si possible.
     func observeMyPlay(drop: Int, frames: [[UInt8]], audio: [UInt8] = []) {
         guard drop >= 1, frames.count >= 20 else { return }
-        // Coût exact d'abord : une baisse de 2 ne peut etre que La Buche.
-        // On n'elargit que si rien ne correspond exactement.
-        var cands = myDeck.filter { $0.cost == drop }
-        if cands.isEmpty { cands = myDeck.filter { abs($0.cost - drop) == 1 } }
 
-        if cands.count == 1 {
-            autoLearned += 1
-            add(frames, for: cands[0], audio: audio)
-        } else if cands.count > 1 {
-            sentToPending += 1
-            pending.insert(Pending(at: Date(), drop: drop,
-                                   frames: frames, audio: audio,
-                                   candidates: cands), at: 0)
-            if pending.count > 25 { pending.removeLast() }
-            lastMessage = "Son mis de côté : \(cands.count) cartes à \(drop) élixirs"
-        } else {
+        // Tolérance d'un élixir : la barre est lue avec un léger retard, si
+        // bien qu'une carte à 2 peut être vue comme une baisse de 1 ou de 3.
+        // Se limiter au coût exact écartait des candidats légitimes.
+        let cands = myDeck.filter { abs($0.cost - drop) <= 1 }
+                          .sorted { abs($0.cost - drop) < abs($1.cost - drop) }
+
+        guard !cands.isEmpty else {
             noCandidate += 1
             lastMessage = "Baisse de \(drop) : aucune carte de ton deck"
+            return
         }
+
+        // Aucun apprentissage automatique, même lorsqu'un seul candidat
+        // existe : une carte mal attribuée pollue durablement la banque
+        // sans qu'on puisse s'en apercevoir. C'est toi qui tranches.
+        sentToPending += 1
+        pending.insert(Pending(at: Date(), drop: drop,
+                               frames: frames, audio: audio,
+                               candidates: cands), at: 0)
+        if pending.count > 40 { pending.removeLast() }
+        lastMessage = "Son à étiqueter · −\(drop) élixir · \(cands.count) candidate(s)"
     }
 
     func label(_ p: Pending, as card: Card) {
+        labelled += 1
         add(p.frames, for: card, audio: p.audio)
         pending.removeAll { $0.id == p.id }
     }

@@ -11,6 +11,7 @@ struct LearnView: View {
     @State private var exportURL: URL?
     @State private var testReport: LearnedSounds.TestReport?
     @State private var method: LearnedSounds.Method = .simple
+    @State private var expanded: String?
     @State private var showShare = false
 
     /// Écrit la banque dans un fichier temporaire, prêt à être partagé.
@@ -340,6 +341,94 @@ struct LearnView: View {
                     }
     }
 
+    /// Liste des cartes apprises, chaque ligne dépliable pour écouter ses
+    /// exemples. Vue séparée : au-delà d'une certaine taille d'expression,
+    /// le compilateur SwiftUI renonce à déduire les types.
+    @ViewBuilder
+    /// Liste des cartes apprises. Toucher une ligne déplie ses exemples,
+    /// avec écoute et spectrogramme : c'est le seul moyen de vérifier que
+    /// la capture contient bien le son de la carte et non celui d'à côté.
+    @ViewBuilder
+    private var cardList: some View {
+        ForEach(learned.learnedCards) { c in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 8) {
+                    Button {
+                        expanded = (expanded == c.id) ? nil : c.id
+                    } label: {
+                        HStack(spacing: 3) {
+                            Image(systemName: expanded == c.id
+                                  ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9))
+                            Text(c.name).font(.caption.weight(.medium))
+                        }
+                        .foregroundStyle(.primary)
+                    }
+
+                    Spacer()
+
+                    if let sep = learned.separation(for: c.id) {
+                        let gap = sep.own - sep.other
+                        Text("\(Int(sep.own * 100))/\(Int(sep.other * 100))")
+                            .font(.caption2.monospacedDigit())
+                            .foregroundStyle(gap > 0.12 ? .green
+                                             : (gap > 0.05 ? .orange : .red))
+                    }
+
+                    Text("\(Int(learned.fillRate(for: c.id) * 100))%")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.blue)
+
+                    Text("\(learned.maskStrength(for: c.id).cells)")
+                        .font(.caption2.monospacedDigit())
+                        .foregroundStyle(.secondary)
+
+                    Button { learned.forget(c.id) } label: {
+                        Image(systemName: "trash").font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if expanded == c.id {
+                    exampleRows(for: c)
+                }
+            }
+            .padding(.horizontal, 12).padding(.vertical, 6)
+            .background(Color.gray.opacity(0.08))
+            .clipShape(RoundedRectangle(cornerRadius: 8))
+        }
+    }
+
+    /// Les exemples d'une carte, avec lecture audio et spectrogramme.
+    @ViewBuilder
+    private func exampleRows(for c: Card) -> some View {
+        ForEach(0..<learned.count(for: c.id), id: \.self) { i in
+            if let ex = learned.example(c.id, at: i) {
+                SpectroView(frames: ex, height: 38)
+                HStack(spacing: 10) {
+                    Button {
+                        if let a = learned.audio(c.id, at: i) {
+                            AudioPlayback.shared.play(a)
+                        }
+                    } label: {
+                        Image(systemName: "play.circle.fill").font(.title3)
+                    }
+                    Text("#\(i + 1)").font(.caption2)
+                    if let cons = learned.consistency(c.id, at: i) {
+                        Text("cohérence \(Int(cons * 100)) %")
+                            .font(.caption2)
+                            .foregroundStyle(cons >= 0.60 ? .green : .red)
+                    }
+                    Spacer()
+                    Button { learned.remove(c.id, at: i) } label: {
+                        Image(systemName: "trash").font(.caption2)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+        }
+    }
+
     @ViewBuilder
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -365,46 +454,7 @@ struct LearnView: View {
                             .padding(.horizontal, 12)
                     }
 
-                    ForEach(learned.learnedCards) { c in
-                        HStack(spacing: 8) {
-                            Text(c.name).font(.caption.weight(.medium))
-                            Spacer()
-                            if let sep = learned.separation(for: c.id) {
-                                let gap = sep.own - sep.other
-                                Text("\(Int(sep.own * 100))/\(Int(sep.other * 100))")
-                                    .font(.caption2.monospacedDigit())
-                                    .foregroundStyle(gap > 0.12 ? .green
-                                                     : (gap > 0.05 ? .orange : .red))
-                            }
-                            // Richesse du masque : combien de cases restent
-                            // une fois le décor écarté. En dessous d'une
-                            // centaine, la carte n'a presque rien de propre.
-                            // Remplissage des exemples : si le son a été effacé
-                            // par le seuil, il ne reste presque rien à comparer.
-                            Text("\(Int(learned.fillRate(for: c.id) * 100))%")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.blue)
-                            if method == .perCard {
-                                Text(learned.methodLabel(for: c.id))
-                                    .font(.caption2)
-                                    .foregroundStyle(.purple)
-                            }
-                            let ms = learned.maskStrength(for: c.id)
-                            Text("\(ms.cells)")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(ms.cells > 250 ? .green
-                                                 : (ms.cells > 100 ? .orange : .red))
-                            Text("+\(learned.freshCount(for: c.id))")
-                                .font(.caption2.monospacedDigit())
-                                .foregroundStyle(.secondary)
-                            Button { learned.forget(c.id) } label: {
-                                Image(systemName: "trash").font(.caption2)
-                                    .foregroundStyle(.red)
-                            }
-                        }
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Color.gray.opacity(0.08))
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                    cardList
                     }
 
                     // Le choix de méthode se mesure, il ne se devine pas :
@@ -460,7 +510,6 @@ struct LearnView: View {
         }
     }
 
-}
 
 /// Passerelle vers la feuille de partage d'iOS.
 struct ShareSheet: UIViewControllerRepresentable {

@@ -452,7 +452,7 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    var scores = pool.map { correlation(probe, $0) }
+                    var scores = pool.map { score(probe, $0) }
                     scores.sort(by: >)
                     let sc = scores.count >= 2
                         ? (scores[0] + scores[1]) / 2 : scores[0]
@@ -506,7 +506,7 @@ final class LearnedSounds: ObservableObject {
             // Moyenne des deux meilleures correspondances : plus stable
             // qu'un simple record, qui favorise les cartes ayant le plus
             // d'exemples enregistrés.
-            var scores = usable.map { correlation(probe, $0) }
+            var scores = usable.map { score(probe, $0) }
             scores.sort(by: >)
             let take = min(2, scores.count)
             let bestForCard = scores.prefix(take).reduce(0, +) / Double(take)
@@ -764,6 +764,133 @@ final class LearnedSounds: ObservableObject {
             if den > 1e-6 { best = max(best, num / den) }
         }
         return best
+    }
+
+    // MARK: - Méthodes de comparaison
+
+    enum Method: String, CaseIterable, Identifiable {
+        case simple      = "Corrélation"
+        case blurred     = "Corrélation floutée"
+        case descriptors = "Descripteurs"
+        case combined    = "Combiné"
+        var id: String { rawValue }
+    }
+
+    nonisolated(unsafe) static var method: Method = .simple
+
+    /// Flou léger : chaque case déborde sur ses voisines, si bien qu'un motif
+    /// décalé d'une case continue de se superposer. Vise le décalage local en
+    /// fréquence, celui que la recherche du meilleur décalage temporel ne
+    /// rattrape pas.
+    func blur(_ m: [[UInt8]]) -> [[UInt8]] {
+        guard let bands = m.first?.count, bands > 2, m.count > 2 else { return m }
+        var out = m
+        for t in 0..<m.count {
+            for b in 0..<bands {
+                var sum = 0.0, w = 0.0
+                for dt in -1...1 {
+                    for db in -1...1 {
+                        let tt = t + dt, bb = b + db
+                        guard tt >= 0, tt < m.count, bb >= 0, bb < m[tt].count
+                        else { continue }
+                        // Centre plus lourd que les bords : on élargit le
+                        // motif sans effacer sa forme.
+                        let g = (dt == 0 && db == 0) ? 4.0
+                              : (dt == 0 || db == 0) ? 2.0 : 1.0
+                        sum += Double(m[tt][bb]) * g
+                        w += g
+                    }
+                }
+                out[t][b] = UInt8(max(0, min(255, Int(sum / max(w, 1)))))
+            }
+        }
+        return out
+    }
+
+    /// Signature physique d'un son, insensible à sa position dans la fenêtre.
+    ///
+    /// Là où la corrélation demande « le pic est-il au même endroit ? », ces
+    /// grandeurs demandent « quelle est la nature de ce son ? ». Un cliquetis
+    /// d'os reste aigu et sec où qu'il tombe dans la fenêtre.
+    struct Descriptors {
+        var centroid = 0.0      // barycentre des fréquences
+        var crest = 0.0         // pic sur moyenne : sec ou continu
+        var attack = 0.0        // vitesse de montée
+        var hfRatio = 0.0       // part de l'énergie dans les aigus
+        var spread = 0.0        // étalement en fréquence
+
+        func distance(to o: Descriptors) -> Double {
+            let d = [(centroid - o.centroid) / 8,
+                     (crest - o.crest) / 3,
+                     (attack - o.attack) / 40,
+                     (hfRatio - o.hfRatio),
+                     (spread - o.spread) / 6]
+            return (d.reduce(0) { $0 + $1 * $1 }).squareRoot()
+        }
+    }
+
+    func descriptors(_ m: [[UInt8]]) -> Descriptors {
+        var d = Descriptors()
+        guard let bands = m.first?.count, bands > 0, !m.isEmpty else { return d }
+
+        var energy = [Double](repeating: 0, count: m.count)
+        var bandSum = [Double](repeating: 0, count: bands)
+        var total = 0.0
+        for (t, row) in m.enumerated() {
+            for b in 0..<min(bands, row.count) {
+                let v = Double(row[b])
+                energy[t] += v
+                bandSum[b] += v
+                total += v
+            }
+        }
+        guard total > 1 else { return d }
+
+        // Centroïde et étalement spectral
+        var num = 0.0
+        for b in 0..<bands { num += Double(b) * bandSum[b] }
+        d.centroid = num / total
+        var varr = 0.0
+        for b in 0..<bands {
+            let dx = Double(b) - d.centroid
+            varr += dx * dx * bandSum[b]
+        }
+        d.spread = (varr / total).squareRoot()
+
+        // Facteur de crête : un son percussif domine sa propre fenêtre
+        let peak = energy.max() ?? 0
+        let mean = energy.reduce(0, +) / Double(energy.count)
+        d.crest = mean > 0.01 ? peak / mean : 0
+
+        // Pente d'attaque : plus forte montée d'une trame à la suivante
+        var slope = 0.0
+        for i in 1..<energy.count { slope = max(slope, energy[i] - energy[i - 1]) }
+        d.attack = slope / Double(bands)
+
+        // Répartition aigus / graves
+        let half = bands / 2
+        let lf = bandSum[0..<half].reduce(0, +)
+        let hf = bandSum[half...].reduce(0, +)
+        d.hfRatio = (lf + hf) > 0 ? hf / (lf + hf) : 0
+        return d
+    }
+
+    /// Score selon la méthode retenue, toujours ramené sur l'échelle de la
+    /// corrélation pour rester comparable d'une carte à l'autre.
+    func score(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
+        switch LearnedSounds.method {
+        case .simple:
+            return correlation(a, b)
+        case .blurred:
+            return correlation(blur(a), blur(b))
+        case .descriptors:
+            let dist = descriptors(a).distance(to: descriptors(b))
+            return 1 - min(1, dist)          // 1 = identique
+        case .combined:
+            let c = correlation(a, b)
+            let dist = descriptors(a).distance(to: descriptors(b))
+            return 0.6 * c + 0.4 * (1 - min(1, dist))
+        }
     }
 
     func correlation(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {

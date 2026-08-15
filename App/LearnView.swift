@@ -12,6 +12,7 @@ struct LearnView: View {
     @State private var testReport: LearnedSounds.TestReport?
     @State private var method: LearnedSounds.Method = .simple
     @State private var expanded: String?
+    @State private var honest = false
     @State private var showShare = false
 
     /// Écrit la banque dans un fichier temporaire, prêt à être partagé.
@@ -435,6 +436,47 @@ struct LearnView: View {
         }
     }
 
+    /// Choix de méthode et lancement du test.
+    @ViewBuilder
+    private var methodPicker: some View {
+        VStack(spacing: 8) {
+                    // Le choix de méthode se mesure, il ne se devine pas :
+                    // change ici puis relance le test pour comparer.
+                    Picker("Méthode", selection: $method) {
+                        ForEach(LearnedSounds.Method.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: method) { newValue in
+                        LearnedSounds.method = newValue
+                        testReport = nil
+                    }
+
+                    Toggle(isOn: $honest) {
+                        Text("Test sans biais (moitié apprend, moitié teste)")
+                            .font(.caption2)
+                    }
+                    .onChange(of: honest) { _ in testReport = nil }
+                    .padding(.horizontal, 4)
+
+                    Button {
+                        LearnedSounds.method = method
+                        testReport = honest ? learned.honestTest()
+                                            : learned.selfTest()
+                    } label: {
+                        Label("Tester la reconnaissance", systemImage: "checkmark.seal")
+                            .font(.subheadline.weight(.medium))
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(Color.green.opacity(0.18))
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                    .padding(.top, 12)
+
+                    testReportView
+        }
+    }
+
     @ViewBuilder
     private var summarySection: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -463,32 +505,7 @@ struct LearnView: View {
                     cardList
                     }
 
-                    // Le choix de méthode se mesure, il ne se devine pas :
-                    // change ici puis relance le test pour comparer.
-                    Picker("Méthode", selection: $method) {
-                        ForEach(LearnedSounds.Method.allCases) { m in
-                            Text(m.rawValue).tag(m)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .onChange(of: method) { newValue in
-                        LearnedSounds.method = newValue
-                        testReport = nil
-                    }
-
-                    Button {
-                        LearnedSounds.method = method
-                        testReport = learned.selfTest()
-                    } label: {
-                        Label("Tester la reconnaissance", systemImage: "checkmark.seal")
-                            .font(.subheadline.weight(.medium))
-                            .frame(maxWidth: .infinity, minHeight: 44)
-                            .background(Color.green.opacity(0.18))
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                    }
-                    .padding(.top, 12)
-
-                    testReportView
+                    methodPicker
 
                     Button {
                         exportURL = writeExport()

@@ -931,7 +931,11 @@ final class LearnedSounds: ObservableObject {
     /// corrélation pour rester comparable d'une carte à l'autre.
     func similarity(_ a: [[UInt8]], _ b: [[UInt8]], for id: String? = nil) -> Double {
         let m = id.map { methodFor($0) } ?? LearnedSounds.method
-        switch m == .perCard ? .simple : m {
+        switch m {
+        case .perCard:
+            // methodFor ne renvoie jamais .perCard ; ce cas n'arrive que si
+            // aucune carte n'est précisée, et la corrélation fait alors foi.
+            return correlation(a, b)
         case .simple:
             return correlation(a, b)
         case .blurred:

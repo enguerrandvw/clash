@@ -10,6 +10,7 @@ struct LearnView: View {
     @State private var editingDeck = false
     @State private var exportURL: URL?
     @State private var testReport: LearnedSounds.TestReport?
+    @State private var method: LearnedSounds.Method = .simple
     @State private var showShare = false
 
     /// Écrit la banque dans un fichier temporaire, prêt à être partagé.
@@ -401,7 +402,21 @@ struct LearnView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                     }
 
+                    // Le choix de méthode se mesure, il ne se devine pas :
+                    // change ici puis relance le test pour comparer.
+                    Picker("Méthode", selection: $method) {
+                        ForEach(LearnedSounds.Method.allCases) { m in
+                            Text(m.rawValue).tag(m)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .onChange(of: method) { newValue in
+                        LearnedSounds.method = newValue
+                        testReport = nil
+                    }
+
                     Button {
+                        LearnedSounds.method = method
                         testReport = learned.selfTest()
                     } label: {
                         Label("Tester la reconnaissance", systemImage: "checkmark.seal")

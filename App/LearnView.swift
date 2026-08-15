@@ -99,7 +99,7 @@ struct LearnView: View {
                         .font(.caption2)
                         .foregroundStyle(sound.framesInBuffer > 100 ? .green : .red)
 
-                    Text("appris \(learned.autoLearned) · en attente \(learned.sentToPending)"
+                    Text("étiquetés \(learned.labelled) · en attente \(learned.sentToPending)"
                          + " · sans événement \(sound.rejectedNoEvent)"
                          + " · hors deck \(learned.noCandidate)")
                         .font(.caption2).foregroundStyle(.blue)
@@ -401,14 +401,24 @@ struct LearnView: View {
         ForEach(0..<learned.count(for: c.id), id: \.self) { i in
             if let ex = learned.example(c.id, at: i) {
                 SpectroView(frames: ex, height: 38)
+                // L'audio n'accompagne que les exemples enregistrés depuis
+                // la dernière réinstallation : l'export ne contient que les
+                // spectrogrammes, bien plus légers.
+                let hasAudio = (learned.audio(c.id, at: i)?.count ?? 0) > 100
+
                 HStack(spacing: 10) {
                     Button {
                         if let a = learned.audio(c.id, at: i) {
                             AudioPlayback.shared.play(a)
                         }
                     } label: {
-                        Image(systemName: "play.circle.fill").font(.title3)
+                        Image(systemName: hasAudio ? "play.circle.fill"
+                                                   : "speaker.slash.circle")
+                            .font(.title3)
+                            .foregroundStyle(hasAudio ? .blue : .gray)
                     }
+                    .disabled(!hasAudio)
+
                     Text("#\(i + 1)").font(.caption2)
                     if let cons = learned.consistency(c.id, at: i) {
                         Text("cohérence \(Int(cons * 100)) %")
@@ -492,6 +502,13 @@ struct LearnView: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
                     .padding(.top, 8)
+
+                    Text("Les exemples restaurés depuis le fichier n'ont pas de son : "
+                         + "seuls les spectrogrammes sont exportés. Les nouveaux "
+                         + "enregistrements restent écoutables jusqu'à la prochaine "
+                         + "réinstallation.")
+                        .font(.caption2).foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
 
                     Text("Dépose le fichier dans App/BankedSounds.swift sur GitHub : "
                          + "tes exemples seront compilés dans l'app et ne se perdront plus.")

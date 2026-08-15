@@ -49,8 +49,6 @@ jobs:
             -configuration Release \
             -sdk iphoneos \
             -derivedDataPath build \
-            SWIFT_OPTIMIZATION_LEVEL=-Onone \
-            SWIFT_COMPILATION_MODE=incremental \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \

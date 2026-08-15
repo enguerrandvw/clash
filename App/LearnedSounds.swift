@@ -452,7 +452,7 @@ final class LearnedSounds: ObservableObject {
                         : list
                     guard !pool.isEmpty else { continue }
 
-                    var scores = pool.map { score(probe, $0) }
+                    var scores = pool.map { similarity(probe, $0) }
                     scores.sort(by: >)
                     let sc = scores.count >= 2
                         ? (scores[0] + scores[1]) / 2 : scores[0]
@@ -506,7 +506,7 @@ final class LearnedSounds: ObservableObject {
             // Moyenne des deux meilleures correspondances : plus stable
             // qu'un simple record, qui favorise les cartes ayant le plus
             // d'exemples enregistrés.
-            var scores = usable.map { score(probe, $0) }
+            var scores = usable.map { similarity(probe, $0) }
             scores.sort(by: >)
             let take = min(2, scores.count)
             let bestForCard = scores.prefix(take).reduce(0, +) / Double(take)
@@ -877,7 +877,7 @@ final class LearnedSounds: ObservableObject {
 
     /// Score selon la méthode retenue, toujours ramené sur l'échelle de la
     /// corrélation pour rester comparable d'une carte à l'autre.
-    func score(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
+    func similarity(_ a: [[UInt8]], _ b: [[UInt8]]) -> Double {
         switch LearnedSounds.method {
         case .simple:
             return correlation(a, b)

@@ -384,6 +384,11 @@ struct LearnView: View {
                             Text("\(Int(learned.fillRate(for: c.id) * 100))%")
                                 .font(.caption2.monospacedDigit())
                                 .foregroundStyle(.blue)
+                            if method == .perCard {
+                                Text(learned.methodLabel(for: c.id))
+                                    .font(.caption2)
+                                    .foregroundStyle(.purple)
+                            }
                             let ms = learned.maskStrength(for: c.id)
                             Text("\(ms.cells)")
                                 .font(.caption2.monospacedDigit())

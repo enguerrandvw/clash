@@ -436,6 +436,55 @@ final class LearnedSounds: ObservableObject {
     /// Teste la reconnaissance honnêtement : chaque exemple est présenté à
     /// l'app COMME S'IL ÉTAIT INCONNU, en le retirant de la banque. C'est
     /// la seule mesure qui prédise le comportement réel en partie.
+    /// Test sans biais : la moitié des exemples sert à décider de la
+    /// méthode, l'autre moitié seulement à mesurer. C'est la seule façon
+    /// de savoir ce que vaudrait le mode Auto sur des sons jamais vus.
+    func honestTest() -> TestReport {
+        var r = TestReport()
+        let ids = Array(store.keys)
+        guard ids.count >= 2 else { return r }
+
+        // Découpe : exemples de rang pair pour apprendre, impair pour tester
+        var learn: [String: [[[UInt8]]]] = [:]
+        var test: [String: [[[UInt8]]]] = [:]
+        for (id, list) in store {
+            guard list.count >= 4 else { continue }
+            learn[id] = list.enumerated().filter { $0.offset % 2 == 0 }.map(\.element)
+            test[id]  = list.enumerated().filter { $0.offset % 2 == 1 }.map(\.element)
+        }
+        guard learn.count >= 2 else { return r }
+
+        // Méthode décidée sur la seule moitié d'apprentissage
+        var chosen: [String: Method] = [:]
+        for id in learn.keys { chosen[id] = methodFor(id, learningOn: learn) }
+
+        for (id, probes) in test {
+            for probe in probes {
+                var best = ""
+                var bestScore = -2.0
+                for (other, exs) in learn {
+                    let m = chosen[other] ?? .simple
+                    var scores = exs.map { ex -> Double in
+                        m == .blurred ? correlation(blur(probe), blur(ex))
+                                      : correlation(probe, ex)
+                    }
+                    scores.sort(by: >)
+                    let sc = scores.count >= 2
+                        ? (scores[0] + scores[1]) / 2 : (scores.first ?? -2)
+                    if sc > bestScore { bestScore = sc; best = other }
+                }
+                guard !best.isEmpty else { continue }
+                r.total += 1
+                var cell = r.perCard[id] ?? (0, 0)
+                cell.n += 1
+                if best == id { r.correct += 1; cell.ok += 1 }
+                else { r.confusedWith[id, default: [:]][best, default: 0] += 1 }
+                r.perCard[id] = cell
+            }
+        }
+        return r
+    }
+
     func selfTest() -> TestReport {
         var r = TestReport()
         let ids = Array(store.keys)
@@ -795,21 +844,26 @@ final class LearnedSounds: ObservableObject {
     /// l'une ou l'autre selon la carte sans fausser la comparaison.
     private var perCardMethod: [String: Method] = [:]
 
-    func methodFor(_ id: String) -> Method {
-        if LearnedSounds.method != .perCard { return LearnedSounds.method }
-        if let m = perCardMethod[id] { return m }
+    /// Choix de méthode fondé sur une PARTIE des exemples seulement.
+    ///
+    /// Le mode Auto décidait jusqu'ici en regardant tous les exemples, ceux
+    /// du test compris : il connaissait donc les réponses au moment de
+    /// choisir, et son score s'en trouvait flatté. En n'utilisant qu'une
+    /// moitié pour décider, le test sur l'autre moitié devient honnête.
+    func methodFor(_ id: String, learningOn pool: [String: [[[UInt8]]]]? = nil) -> Method {
+        guard LearnedSounds.method == .perCard else { return LearnedSounds.method }
+        let source = pool ?? store
+        if pool == nil, let m = perCardMethod[id] { return m }
 
-        // On mesure, pour cette carte seule, laquelle des deux retrouve le
-        // mieux ses propres exemples parmi toutes les cartes.
         var bestM = Method.simple
         var bestHits = -1
         for cand in [Method.simple, .blurred] {
             var hits = 0
-            guard let list = store[id] else { continue }
+            guard let list = source[id] else { continue }
             for (i, probe) in list.enumerated() {
                 var top = ""
                 var topScore = -2.0
-                for (other, exs) in store {
+                for (other, exs) in source {
                     for (j, ex) in exs.enumerated() {
                         if other == id && j == i { continue }
                         let v = cand == .simple
@@ -822,9 +876,10 @@ final class LearnedSounds: ObservableObject {
             }
             if hits > bestHits { bestHits = hits; bestM = cand }
         }
-        perCardMethod[id] = bestM
+        if pool == nil { perCardMethod[id] = bestM }
         return bestM
     }
+
 
     func methodLabel(for id: String) -> String {
         switch methodFor(id) {
